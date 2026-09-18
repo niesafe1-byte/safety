@@ -1,0 +1,16 @@
+{
+  "name": "국립생태원 안전도우미",
+  "short_name": "안전도우미",
+  "description": "멸종위기종복원센터 직원용 현장 안전 앱 — 출장 자동화 · AI 위험성평가 · 날씨알림",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f0f4f8",
+  "theme_color": "#1a365d",
+  "lang": "ko",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

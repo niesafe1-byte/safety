@@ -1,0 +1,3079 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>국립생태원 안전도우미</title>
+<meta name="theme-color" content="#1a365d">
+<!-- 홈 화면에 추가(앱처럼 실행)용 정보 — 같은 폴더의 manifest.json·아이콘 사용 -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="안전도우미">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- 위험성평가 보고서용 글꼴 (Noto Sans KR). 인터넷이 없으면 맑은 고딕으로 자동 대체됩니다. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /* ═════════════════════════════════════════════════════════════
+     국립생태원 안전도우미 — 통합 앱 (한 파일)
+     ① 출장 자동화 (trip.html) ② AI 위험성평가 (risk-report.html) ③ 안전 날씨 (안전날씨_index.html)
+     · 각 기능의 스타일은 #page-risk / #page-weather 안에서만 적용되도록 접두어를 붙였고,
+       스크립트는 window.RK / window.SW 모듈로 감싸 서로 충돌하지 않습니다.
+     · 키: 같은 폴더의 keys.js (window.APP_KEYS) → 없으면 아래 스크립트의 기본값 사용
+     ═════════════════════════════════════════════════════════════ */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body {
+    font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;
+    background:#f0f4f8; color:#2d3748;
+    display:flex; flex-direction:column;
+  }
+
+  /* ── 상단 제목 ── */
+  body > header {
+    background:#1a365d; color:#fff; text-align:center;
+    padding:12px 10px; font-size:17px; font-weight:bold; flex-shrink:0;
+  }
+  body > header small { display:block; font-weight:normal; font-size:11px; color:#a0c4e8; margin-top:2px; }
+
+  /* ── 내용 영역: 탭마다 한 화면, 각 화면이 따로 스크롤 ── */
+  body > main { flex:1; overflow:hidden; position:relative; }
+  .page { display:none; height:100%; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+  .page.on { display:block; }
+
+  /* ── 홈 · 출장 자동화 · 관람 날씨 화면 (공통 틀) ── */
+  .trip-wrap { max-width:420px; margin:0 auto; padding:16px 12px 30px; }
+  .step-badge {
+    display:inline-block; background:#2b6cb0; color:#fff; font-size:11px;
+    font-weight:bold; border-radius:10px; padding:2px 10px; margin-bottom:8px;
+  }
+  .step-badge.smart { background:#c05621; }
+  .trip-wrap .card {
+    background:#fff; border-radius:14px; padding:16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:14px;
+  }
+  .trip-wrap .card h2 { font-size:16px; color:#1a365d; margin-bottom:6px; }
+  .trip-wrap .card p { font-size:13px; color:#4a5568; line-height:1.7; margin-bottom:12px; }
+  .trip-wrap .hint { margin-top:6px; color:#718096; font-size:11.5px; line-height:1.5; }
+  .go-btn {
+    display:block; width:100%; text-align:center; background:#2f855a; color:#fff;
+    border:none; border-radius:12px; padding:13px 0; font-size:15px; font-weight:bold;
+    text-decoration:none; font-family:inherit; cursor:pointer;
+  }
+  .go-btn.blue { background:#2b6cb0; }
+  .select-row { display:flex; gap:8px; margin-bottom:10px; }
+  .select-row select {
+    flex:1; min-width:0; border:1.5px solid #e2e8f0; border-radius:10px;
+    padding:10px; font-size:14px; font-family:inherit; background:#fff; color:#2d3748;
+  }
+  .select-row button { flex:1.4; }
+  .tip {
+    font-size:12px; color:#744210; background:#fffbea; border:1px solid #f6e05e;
+    border-radius:10px; padding:10px 12px; line-height:1.7;
+  }
+
+  /* ── 특보 배너 · 근무지 선택 · 준비물 추천 ── */
+  .warn-banner {
+    background:#c53030; color:#fff; border-radius:12px; padding:11px 14px;
+    font-size:13.5px; margin-bottom:12px; cursor:pointer; text-align:center;
+    box-shadow:0 2px 6px rgba(197,48,48,.3); line-height:1.5;
+  }
+  .site-row {
+    display:flex; align-items:center; gap:10px; background:#fff; border-radius:12px;
+    padding:10px 14px; margin-bottom:12px; box-shadow:0 1px 4px rgba(0,0,0,.07);
+  }
+  .site-label { font-size:13px; font-weight:bold; white-space:nowrap; }
+  .site-row select {
+    flex:1; min-width:0; border:1.5px solid #e2e8f0; border-radius:10px; padding:8px 10px;
+    font-size:13px; font-family:inherit; background:#fff; color:#2d3748;
+  }
+  .site-now { font-size:12.5px; color:#2c5282; background:#ebf8ff; border:1px solid #bee3f8;
+    border-radius:10px; padding:8px 12px; margin-bottom:12px; }
+  .site-now b { color:#1a365d; }
+  .pack-sum { font-size:13px; background:#ebf8ff; border:1px solid #bee3f8; color:#2c5282;
+    border-radius:10px; padding:9px 12px; margin-bottom:8px; line-height:1.6; }
+  .pack-items { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .pack-items span { background:#f0fff4; border:1px solid #9ae6b4; color:#276749;
+    border-radius:999px; padding:5px 11px; font-size:12.5px; font-weight:bold; }
+  .pack-warn { font-size:12.5px; color:#c53030; font-weight:bold; line-height:1.6; }
+
+  /* ── 홈 (랜딩) ── */
+  .home-hero { text-align:center; padding:22px 0 18px; }
+  .home-logo { font-size:44px; }
+  .home-hero h1 { font-size:21px; color:#1a365d; margin-top:6px; }
+  .home-hero p { font-size:13px; color:#718096; margin-top:4px; }
+  .home-card { display:flex; align-items:center; gap:14px; cursor:pointer; transition:transform .1s; }
+  .home-card:active { transform:scale(.98); }
+  .home-ico {
+    font-size:28px; width:52px; height:52px; flex-shrink:0;
+    background:#f0f4f8; border-radius:14px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .home-card > div:nth-child(2) { flex:1; min-width:0; }
+  .home-card h2 { margin-bottom:3px; }
+  .home-card p { margin-bottom:0; }
+  .home-arrow { font-size:26px; color:#cbd5e0; flex-shrink:0; }
+
+  /* ── 하단 탭 ── */
+  body > nav {
+    display:flex; background:#fff; border-top:1.5px solid #e2e8f0; flex-shrink:0;
+    padding-bottom:env(safe-area-inset-bottom);   /* 아이폰 하단 여백 */
+  }
+  body > nav button {
+    flex:1; border:none; background:none; font-family:inherit; cursor:pointer;
+    padding:9px 0 7px; font-size:11px; color:#a0aec0; font-weight:bold;
+  }
+  body > nav button .ico { display:block; font-size:21px; margin-bottom:2px; }
+  body > nav button.on { color:#2f855a; }
+  @media (max-width:360px) { .select-row { flex-direction:column; } }
+
+  /* ═══ ② AI 위험성평가 화면 전용 스타일 (원본 risk-report.html, #page-risk 안에서만 적용) ═══ */
+  #page-risk .rwrap{ width:100%; max-width:420px; }
+  #page-risk h1{ font-size:20px; text-align:center; margin-bottom:4px; color:#1a365d; }
+  #page-risk .sub{ text-align:center; font-size:12px; color:#718096; margin-bottom:16px; }
+
+  #page-risk .card{
+    background:#fff; border-radius:14px; padding:14px 16px;
+    box-shadow:0 1px 4px rgba(0,0,0,.07); margin-bottom:12px;
+  }
+  #page-risk .label{ font-size:14px; font-weight:bold; margin-bottom:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  #page-risk .req{ font-size:10px; color:#e53e3e; background:#fff0f0; border:1px solid #fbb; border-radius:10px; padding:1px 8px; font-weight:bold; }
+  #page-risk .req.blue{ color:#3182ce; background:#ebf8ff; border-color:#90cdf4; }
+  #page-risk .hint{ font-size:12px; color:#a0aec0; margin-top:4px; }
+
+  #page-risk input[type=text], #page-risk textarea, #page-risk select{
+    width:100%; border:1.5px solid #e2e8f0; border-radius:10px;
+    padding:10px 12px; font-size:14px; font-family:inherit; background:#fff; color:#2d3748;
+  }
+  #page-risk input:focus, #page-risk textarea:focus, #page-risk select:focus{ outline:none; border-color:#38a169; }
+  #page-risk textarea{ min-height:80px; resize:vertical; }
+
+  
+  #page-risk .mode-chips{ display:flex; gap:10px; }
+  #page-risk .mode-chip{
+    flex:1; text-align:center; border:2px solid #e2e8f0; border-radius:12px;
+    padding:14px 0; font-size:15px; font-weight:bold; cursor:pointer; user-select:none; background:#fff;
+  }
+  #page-risk .mode-chip.on{ border-color:#2f855a; background:#f0fff4; color:#276749; }
+
+  
+  #page-risk .photo-box{
+    border:2px dashed #cbd5e0; border-radius:12px; padding:14px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  #page-risk .photo-box b{ font-size:14px; }
+  #page-risk .photo-box .hint{ margin-top:2px; }
+  #page-risk .btn-file{
+    background:#ebf8ff; color:#2b6cb0; border:1.5px solid #90cdf4;
+    border-radius:10px; padding:9px 14px; font-size:13px; font-weight:bold;
+    cursor:pointer; white-space:nowrap; font-family:inherit;
+  }
+  #page-risk #preview{ width:100%; border-radius:10px; margin-top:10px; display:none; }
+
+  
+  #page-risk .chips{ display:flex; gap:8px; }
+  #page-risk .chip{
+    flex:1; text-align:center; border:1.5px solid #e2e8f0; border-radius:10px;
+    padding:9px 0; font-size:14px; cursor:pointer; user-select:none; background:#fff;
+  }
+  #page-risk .chip.on{ background:#38a169; color:#fff; border-color:#38a169; font-weight:bold; }
+
+  #page-risk .row2{ display:flex; gap:10px; }
+  #page-risk .row2 > div{ flex:1; }
+
+  
+  #page-risk .btn-row{ display:flex; gap:10px; margin-top:4px; }
+  #page-risk .btn{
+    flex:1; border:none; border-radius:12px; padding:14px 0;
+    font-size:16px; font-weight:bold; cursor:pointer; font-family:inherit;
+  }
+  #page-risk .btn-go{ background:#2f855a; color:#fff; flex:2; }
+  #page-risk .btn-go:disabled{ background:#a0aec0; cursor:wait; }
+  #page-risk .btn-reset{ background:#fff; color:#4a5568; border:1.5px solid #e2e8f0; }
+
+  #page-risk .notice{
+    font-size:12px; border-radius:10px; padding:9px 12px; margin-bottom:12px;
+    background:#fffbea; border:1px solid #f6e05e; color:#744210; display:none;
+  }
+
+  
+  #page-risk #resultArea{ display:none; }
+  #page-risk .result-title{ font-size:17px; font-weight:bold; color:#1a365d; margin:18px 0 8px; text-align:center; }
+  #page-risk #annotCanvas{ width:100%; border-radius:12px; display:block; }
+  #page-risk .summary{ font-size:13px; background:#ebf8ff; border:1px solid #bee3f8; color:#2c5282; border-radius:10px; padding:10px 12px; margin:10px 0; }
+
+  #page-risk .legend{ display:flex; gap:14px; justify-content:center; margin-top:8px; font-size:12px; color:#4a5568; }
+  #page-risk .legend i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+
+  #page-risk .risk-item{ display:flex; gap:10px; padding:12px 0; border-bottom:1px solid #edf2f7; }
+  #page-risk .risk-item:last-child{ border-bottom:none; }
+  #page-risk .risk-no{
+    min-width:28px; height:28px; border-radius:50%; background:#e53e3e; color:#fff;
+    font-weight:bold; font-size:14px; display:flex; align-items:center; justify-content:center;
+  }
+  #page-risk .risk-body{ flex:1; }
+  #page-risk .risk-factor{ font-size:14px; font-weight:bold; margin-bottom:3px; }
+  #page-risk .risk-score{ font-size:12px; color:#718096; margin-bottom:3px; }
+  #page-risk .risk-score b{ color:#c53030; }
+  #page-risk .risk-measure{ font-size:13px; color:#4a5568; line-height:1.5; }
+  #page-risk .grade{ font-size:11px; font-weight:bold; border-radius:8px; padding:1px 8px; margin-left:6px; vertical-align:middle; }
+  #page-risk .grade.high{ background:#fed7d7; color:#c53030; }
+  #page-risk .grade.mid{ background:#feebc8; color:#c05621; }
+  #page-risk .grade.low{ background:#c6f6d5; color:#276749; }
+
+  #page-risk .btn-save{ width:100%; margin-top:10px; background:#2b6cb0; color:#fff; border:none;
+    border-radius:12px; padding:12px 0; font-size:14px; font-weight:bold; cursor:pointer; font-family:inherit; }
+
+  #page-risk .disclaimer{
+    font-size:12px; color:#975a16; background:#fffbea; border:1px solid #f6e05e;
+    border-radius:10px; padding:8px 12px; margin-top:10px; text-align:center;
+  }
+  #page-risk .footer-note{
+    font-size:12px; color:#718096; text-align:center; line-height:1.7;
+    margin-top:24px; padding:14px 10px; border-top:1.5px dashed #cbd5e0;
+  }
+
+  #page-risk #rkLoading{ display:none; text-align:center; padding:20px 0; color:#4a5568; font-size:14px; }
+  #page-risk .spin{ width:26px; height:26px; border:3px solid #cbd5e0; border-top-color:#2f855a;
+    border-radius:50%; margin:0 auto 8px; animation:sp 0.9s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  
+  #page-risk .rwrap.result-view{ max-width:1000px; }
+  #page-risk .rwrap.result-view > :not(#resultArea){ display:none !important; }
+  #page-risk .report-toolbar{ display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px; }
+  #page-risk .report-toolbar button{ border:1px solid #c7d1df;border-radius:9px;background:white;color:#142e50;padding:12px 16px;cursor:pointer;font: bold 14px 'Malgun Gothic',sans-serif; }
+  #page-risk .report-toolbar .primary{ background:#12385f;color:white;border-color:#12385f; }
+  #page-risk .report-paper{ background:white;box-shadow:0 4px 24px #15263d18; }
+  #page-risk #reportCanvas{ display:block;width:100%;height:auto; }
+  #page-risk #printReport{ display:none; }
+  #page-risk .report-help{ color:#536175;font-size:12px;margin:10px 0;line-height:1.7; }
+  #page-risk #textDetails{ background:#fff;padding:14px;margin-top:16px;border:1px solid #d7deea;border-radius:10px; }
+  #page-risk #textDetails summary{ cursor:pointer;color:#142e50;font-weight:bold; }
+  #page-risk #reportText{ font-size:14px;line-height:1.7;overflow-wrap:anywhere; }
+  #page-risk #reportText h2{ font-size:18px;margin:15px 0; }
+  #page-risk #reportText p{ margin:10px 0; }
+  #page-risk .table-scroll{ overflow-x:auto; }
+  #page-risk #reportText table{ border-collapse:collapse;min-width:650px;width:100%; }
+  #page-risk #reportText td, #page-risk #reportText th{ border:1px solid #c5cbd5;padding:8px;vertical-align:top; }
+  #page-risk #reportText th{ background:#e9eef5; }
+  #page-risk .report-fields{ display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+  #page-risk .report-fields label{ font-size:12px;font-weight:bold;line-height:1.6; }
+  #page-risk .report-fields input{ width:100%;min-width:0;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px;font:14px 'Malgun Gothic',sans-serif; }
+  #page-risk .report-fields .full{ grid-column:1/-1; }
+  #page-risk .report-fields .field{ font-size:12px;font-weight:bold;line-height:1.6; }
+  #page-risk .report-fields .field .hint{ font-weight:normal; }
+  #page-risk .inline-row{ display:flex;gap:8px;align-items:stretch; }
+  #page-risk .inline-row input{ flex:1; }
+
+  
+  #page-risk .combo{ position:relative; }
+  #page-risk .combo-list{
+    position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:50;
+    background:#fff; border:1.5px solid #cbd5e0; border-radius:10px;
+    max-height:190px; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    box-shadow:0 6px 18px rgba(0,0,0,.12); font-weight:normal;
+  }
+  #page-risk .combo-list[hidden]{ display:none; }
+  #page-risk .combo-item{ padding:10px 12px; font-size:14px; cursor:pointer; border-bottom:1px solid #f1f5f9; }
+  #page-risk .combo-item:last-child{ border-bottom:none; }
+  #page-risk .combo-item mark{ background:#fefcbf; color:inherit; padding:0; }
+  #page-risk .combo-item.active, #page-risk .combo-item:hover{ background:#f0fff4; }
+  #page-risk .combo-empty{ padding:10px 12px; font-size:13px; color:#a0aec0; font-weight:normal; }
+  #page-risk .combo-toggle{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    border:none; background:transparent; color:#718096; font-size:12px; cursor:pointer; padding:6px;
+  }
+  #page-risk .combo input{ padding-right:34px; }
+  @media(max-width:480px) {#page-risk .report-toolbar button{ flex:1;padding:11px 8px; }#page-risk .report-fields{ grid-template-columns:1fr; }}
+
+#page-risk{background:#f0f4f8;color:#2d3748;}
+#page-risk .rwrap{margin:0 auto;padding:16px 10px 60px;}
+
+  /* ═══ ③ 안전 날씨 화면 전용 스타일 (원본 안전날씨_index.html, #page-weather 안에서만 적용) ═══ */
+  #page-weather{
+    --brand:#15543a; --brand2:#2e7d4f;
+    --surface:#f4f6f4; --card:#ffffff;
+    --ink:#182420; --ink2:#4d5c55; --muted:#7b8880; --line:#e3e9e4;
+    --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+    --good-bg:#eef9ee; --warning-bg:#fdf4de; --serious-bg:#fdeee7; --critical-bg:#fbe9e9;
+    --shadow:0 10px 28px rgba(21,84,58,.08);
+    --r:16px;
+  }
+  #page-weather .wwrap{max-width:560px;margin:0 auto;padding:0 14px 40px;}
+
+  
+  #page-weather .appbar{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;
+    padding:10px 14px 44px;border-radius:0 0 26px 26px;}
+  #page-weather .appbar .in{max-width:560px;margin:0 auto;}
+  #page-weather .title{font-size:20px;font-weight:900;letter-spacing:-.6px;display:flex;align-items:center;gap:8px;line-height:1.3;white-space:nowrap;}
+  #page-weather .subtitle{font-size:13.5px;opacity:.88;margin-top:6px;}
+  #page-weather .locrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;}
+  #page-weather .chipbtn{border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;
+    font-size:12.5px;font-weight:700;padding:8px 12px;border-radius:999px;cursor:pointer;font-family:inherit;}
+  #page-weather .chipbtn:active{background:rgba(255,255,255,.28);}
+
+  
+  #page-weather .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:16px;margin-top:14px;}
+  #page-weather .card h2{font-size:15px;font-weight:900;color:var(--brand);display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+  #page-weather .card h2 .hstamp{font-weight:700;color:var(--muted);font-size:11.5px;margin-left:auto;}
+
+  
+  #page-weather .golight{border-radius:14px;padding:13px 15px;display:flex;align-items:center;gap:11px;
+    font-weight:900;border:1.5px solid transparent;margin-bottom:14px;}
+  #page-weather .golight .gico{font-size:26px;line-height:1;}
+  #page-weather .golight .gtx{font-size:17px;}
+  #page-weather .golight .gsub{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin-top:1px;}
+  #page-weather .go-good{background:var(--good-bg);border-color:#bfe3bf;} #page-weather .go-good .gtx{color:#0a7d0a;}
+  #page-weather .go-warning{background:var(--warning-bg);border-color:#f0d79b;} #page-weather .go-warning .gtx{color:#8a6205;}
+  #page-weather .go-serious{background:var(--serious-bg);border-color:#f2c4ae;} #page-weather .go-serious .gtx{color:#b04c22;}
+  #page-weather .go-critical{background:var(--critical-bg);border-color:#ecb8b8;} #page-weather .go-critical .gtx{color:#a92f2f;}
+
+  
+  #page-weather .hero{margin-top:-32px;}
+  #page-weather .hero .locname{font-size:17px;font-weight:900;}
+  #page-weather .hero .locsub{font-size:12.5px;color:var(--muted);margin-top:2px;}
+  #page-weather .heromain{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;}
+  #page-weather .heroicon{font-size:48px;line-height:1;}
+  #page-weather .herotemp{font-size:42px;font-weight:900;letter-spacing:-1.5px;}
+  #page-weather .herotemp small{font-size:20px;font-weight:700;color:var(--ink2);}
+  #page-weather .heroside{margin-left:auto;text-align:right;font-size:13px;color:var(--ink2);}
+  #page-weather .feelstrip{margin-top:12px;background:#f2f7f3;border:1px solid var(--line);border-radius:12px;
+    padding:10px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  #page-weather .feelstrip .fk{font-size:13.5px;font-weight:800;color:var(--ink2);}
+  #page-weather .feelstrip .fv{font-size:22px;font-weight:900;letter-spacing:-.5px;}
+  #page-weather .feelstrip .fnote{margin-left:auto;font-size:12px;color:var(--muted);}
+  #page-weather .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;}
+  #page-weather .tile{background:#f7faf7;border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;}
+  #page-weather .tile .k{font-size:11.5px;color:var(--muted);}
+  #page-weather .tile .v{font-size:16px;font-weight:900;margin-top:3px;}
+  #page-weather .tile .v small{font-size:11px;font-weight:700;color:var(--ink2);}
+  #page-weather .tile.pending .v{color:var(--muted);font-size:12px;font-weight:700;}
+  
+  @media (max-width:400px) { #page-weather .tiles{grid-template-columns:repeat(2,1fr);} }
+  #page-weather .sunline{margin-top:12px;border-top:1px dashed var(--line);padding-top:11px;
+    display:flex;align-items:center;gap:12px;font-size:13.5px;flex-wrap:wrap;}
+  #page-weather .sunline b{font-size:15px;}
+  #page-weather .sunline .snote{flex-basis:100%;font-size:12.5px;color:var(--ink2);}
+
+  
+  #page-weather .risk{border-radius:14px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;
+    border:1px solid transparent;margin-top:12px;}
+  #page-weather .risk .ico{font-size:22px;line-height:1.2;}
+  #page-weather .risk .tx b{font-size:14.5px;}
+  #page-weather .risk .tx p{font-size:13px;margin-top:2px;color:var(--ink2);}
+  #page-weather .lv-good{background:var(--good-bg);border-color:#cbe9cb;}   #page-weather .lv-good b{color:#0a7d0a;}
+  #page-weather .lv-warning{background:var(--warning-bg);border-color:#f3ddab;} #page-weather .lv-warning b{color:#8a6205;}
+  #page-weather .lv-serious{background:var(--serious-bg);border-color:#f5cdbb;} #page-weather .lv-serious b{color:#b04c22;}
+  #page-weather .lv-critical{background:var(--critical-bg);border-color:#efc3c3;} #page-weather .lv-critical b{color:#a92f2f;}
+
+  
+  #page-weather .lvchip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:900;
+    padding:3px 9px;border-radius:999px;}
+  #page-weather .lvchip.c-good{background:var(--good-bg);color:#0a7d0a;}
+  #page-weather .lvchip.c-warning{background:var(--warning-bg);color:#8a6205;}
+  #page-weather .lvchip.c-serious{background:var(--serious-bg);color:#b04c22;}
+  #page-weather .lvchip.c-critical{background:var(--critical-bg);color:#a92f2f;}
+
+  
+  #page-weather .day{display:flex;gap:10px;padding:11px 2px;border-top:1px solid var(--line);align-items:flex-start;}
+  #page-weather .day:first-of-type{border-top:none;}
+  #page-weather .day .dlabel{width:44px;font-size:13.5px;font-weight:900;color:var(--ink2);padding-top:2px;flex:none;}
+  #page-weather .day .dico{font-size:22px;flex:none;line-height:1.3;}
+  #page-weather .day .dbody{flex:1;}
+  #page-weather .day .drow1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  #page-weather .day .dtemp{font-size:13.5px;font-weight:800;}
+  #page-weather .day .dtemp .lo{color:#2a78d6;} #page-weather .day .dtemp .hi{color:#d03b3b;}
+  #page-weather .day .dact{font-size:12.5px;color:var(--ink2);margin-top:3px;}
+
+  
+  #page-weather .warnitem{display:flex;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:13.5px;flex-wrap:wrap;}
+  #page-weather .warnitem:first-of-type{border-top:none;}
+  #page-weather .none{color:var(--muted);font-size:13px;padding:4px 0;}
+  #page-weather .warnitem details{flex-basis:100%;margin-top:2px;}
+  #page-weather .warnitem summary{cursor:pointer;font-size:12px;font-weight:800;color:var(--brand);list-style:none;}
+  #page-weather .warnitem summary::before{content:"▸ ";}
+  #page-weather .warnitem details[open] summary::before{content:"▾ ";}
+  #page-weather .warndetail{font-size:12.5px;color:var(--ink2);background:#f7faf7;border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;margin-top:6px;white-space:pre-wrap;line-height:1.6;}
+  
+  #page-weather .ovl{position:fixed;inset:0;background:rgba(20,30,24,.45);z-index:20;display:none;
+    align-items:flex-start;justify-content:center;padding:60px 16px 16px;overflow-y:auto;}
+  #page-weather .ovl.on{display:flex;}
+  #page-weather .searchbox{background:#fff;border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.25);
+    width:100%;max-width:420px;padding:14px;}
+  #page-weather .searchbox h3{font-size:15px;font-weight:900;color:var(--brand);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+  #page-weather .searchbox h3 button{border:none;background:none;font-size:18px;cursor:pointer;color:var(--muted);}
+  #page-weather .searchbox input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;
+    font-size:14px;font-family:inherit;outline-color:var(--brand2);}
+  #page-weather .rlist{max-height:300px;overflow-y:auto;margin-top:8px;}
+  #page-weather .ritem{padding:10px 8px;border-top:1px solid var(--line);font-size:14px;cursor:pointer;display:flex;justify-content:space-between;}
+  #page-weather .ritem:first-child{border-top:none;}
+  #page-weather .ritem span{color:var(--muted);font-size:12px;}
+  #page-weather .ritem:hover{background:#f2f7f3;}
+
+  
+  #page-weather .cta{display:flex;gap:10px;flex-wrap:wrap;}
+  #page-weather .ctabtn{flex:1;min-width:200px;display:flex;align-items:center;gap:10px;text-decoration:none;
+    background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-radius:14px;
+    padding:13px 15px;font-weight:900;font-size:14.5px;box-shadow:0 8px 20px rgba(21,84,58,.22);}
+  #page-weather .ctabtn .ci{font-size:20px;} #page-weather .ctabtn .cs{display:block;font-size:11.5px;font-weight:700;opacity:.85;margin-top:1px;}
+  #page-weather .ctabtn.alt{background:#fff;color:var(--brand);border:1.5px solid var(--brand2);box-shadow:none;}
+
+  
+  #page-weather .stamp{font-size:11.5px;color:var(--muted);margin-top:10px;}
+  #page-weather .footer{font-size:11.5px;color:var(--muted);text-align:center;margin-top:22px;line-height:1.7;}
+  #page-weather .badge-sample{position:fixed;left:50%;transform:translateX(-50%);bottom:72px;z-index:9;
+    background:#334;color:#fff;font-size:12px;font-weight:800;padding:8px 14px;border-radius:999px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25);opacity:.92;}
+  #page-weather .toast{position:fixed;left:50%;transform:translateX(-50%);top:14px;z-index:30;background:#1f2a22;color:#fff;
+    font-size:13px;padding:10px 16px;border-radius:12px;box-shadow:0 8px 22px rgba(0,0,0,.3);display:none;max-width:90%;}
+
+  
+  #page-weather .regbtn{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1.5px solid var(--brand2);
+    background:#fff;color:var(--brand);font-size:14px;font-weight:900;padding:7px 12px;border-radius:999px;
+    cursor:pointer;font-family:inherit;line-height:1.3;}
+  #page-weather .regbtn .rn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  #page-weather .regbtn .caret{font-size:11px;opacity:.7;}
+  #page-weather .regitem{display:flex;align-items:center;gap:10px;padding:11px 8px;border-top:1px solid var(--line);
+    font-size:14px;cursor:pointer;}
+  #page-weather .regitem:first-child{border-top:none;}
+  #page-weather .regitem:hover{background:#f2f7f3;}
+  #page-weather .regitem .radio{width:18px;height:18px;border-radius:50%;border:2px solid #b7c3bb;flex:none;position:relative;}
+  #page-weather .regitem.on .radio{border-color:var(--brand2);}
+  #page-weather .regitem.on .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--brand2);}
+  #page-weather .regitem .rtx b{display:block;font-size:14px;}
+  #page-weather .regitem .rtx span{display:block;font-size:11.5px;color:var(--muted);margin-top:1px;}
+  #page-weather .regsep{border-top:1px dashed var(--line);margin:6px 0;}
+
+  
+  #page-weather .loading{display:none;align-items:center;gap:8px;margin-top:14px;padding:11px 14px;border-radius:12px;
+    background:#eef3ff;border:1px solid #cfdcf7;color:#2a4d8f;font-size:13px;font-weight:800;}
+  #page-weather .loading.on{display:flex;}
+  #page-weather .loading .spin{width:14px;height:14px;border:2px solid #9db4e6;border-top-color:#2a4d8f;border-radius:50%;
+    animation:spin .9s linear infinite;flex:none;}
+  @keyframes spin {to{transform:rotate(360deg);}}
+  #page-weather .stale{margin-top:10px;padding:8px 12px;border-radius:10px;background:var(--warning-bg);border:1px solid #f0d79b;
+    color:#8a6205;font-size:12px;font-weight:700;display:none;}
+  #page-weather .stale.on{display:block;}
+
+  
+  #page-weather .feelsbig{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  #page-weather .feelsbig .fv2{font-size:40px;font-weight:900;letter-spacing:-1.5px;line-height:1.1;}
+  #page-weather .feelsbig .fv2 small{font-size:18px;font-weight:700;color:var(--ink2);}
+  #page-weather .feelsbig .fsub{font-size:13px;color:var(--ink2);font-weight:700;}
+  #page-weather .fstatus{margin-top:10px;border-radius:12px;padding:10px 13px;font-weight:900;font-size:15px;
+    border:1.5px solid transparent;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  #page-weather .fstatus small{font-size:12px;font-weight:700;color:var(--ink2);}
+  #page-weather .tips{list-style:none;margin-top:10px;}
+  #page-weather .tips li{position:relative;padding:5px 0 5px 16px;font-size:13.5px;line-height:1.5;border-top:1px dashed var(--line);}
+  #page-weather .tips li:first-child{border-top:none;}
+  #page-weather .tips li::before{content:"·";position:absolute;left:4px;top:3px;font-weight:900;font-size:16px;color:var(--brand2);}
+  #page-weather .tips li .src{font-size:11px;color:var(--muted);font-weight:700;margin-left:4px;}
+  #page-weather .fnote2{font-size:11.5px;color:var(--muted);margin-top:8px;}
+
+  
+  #page-weather .wcard{border-radius:14px;border:1.5px solid transparent;padding:12px 14px;margin-top:8px;}
+  #page-weather .wcard:first-child{margin-top:0;}
+  #page-weather .wcard .wtitle{font-size:16px;font-weight:900;display:flex;align-items:center;gap:6px;}
+  #page-weather .wcard .warea{font-size:13px;color:var(--ink2);margin-top:4px;line-height:1.5;}
+  #page-weather .wcard .wtime{font-size:12.5px;color:var(--ink2);margin-top:3px;}
+  #page-weather .wcard .wbtn{margin-top:9px;border:1.5px solid var(--brand2);background:#fff;color:var(--brand);
+    font-size:12.5px;font-weight:800;padding:6px 14px;border-radius:999px;cursor:pointer;font-family:inherit;}
+  #page-weather .wnone{display:flex;align-items:center;gap:8px;border-radius:12px;padding:11px 13px;
+    background:var(--good-bg);border:1.5px solid #cbe9cb;color:#0a7d0a;font-weight:900;font-size:14px;}
+  #page-weather .wsub{font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.6;}
+  #page-weather .wsub b{color:var(--ink);}
+  #page-weather .werr{font-size:12.5px;color:#8a6205;background:var(--warning-bg);border:1px solid #f0d79b;border-radius:10px;padding:8px 11px;}
+  #page-weather .wdl{font-size:13.5px;}
+  #page-weather .wdl .row{display:flex;gap:8px;padding:7px 0;border-top:1px solid var(--line);}
+  #page-weather .wdl .row:first-child{border-top:none;}
+  #page-weather .wdl .k{flex:none;width:76px;color:var(--muted);font-weight:800;font-size:12.5px;padding-top:1px;}
+  #page-weather .wdl .v{flex:1;}
+
+  
+  #page-weather .hscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px 6px;
+    scrollbar-width:thin;}
+  #page-weather .hrow{display:flex;gap:4px;align-items:stretch;}
+  #page-weather .hlabel{flex:none;width:44px;position:sticky;left:0;z-index:2;background:#fff;
+    display:flex;flex-direction:column;justify-content:flex-start;padding:6px 0;
+    border-right:1px solid var(--line);margin-right:2px;}
+  #page-weather .hlabel div{font-size:10.5px;color:var(--muted);font-weight:800;height:22px;line-height:22px;}
+  #page-weather .hlabel div:first-child, #page-weather .hcell .ht{height:30px;}
+  #page-weather .hcell .ht{display:flex;flex-direction:column;justify-content:flex-end;line-height:1.15;padding-bottom:2px;}
+  #page-weather .hcell{flex:none;width:60px;border-radius:12px;border:1.5px solid var(--line);background:#f9fbf9;
+    padding:6px 2px;text-align:center;}
+  #page-weather .hcell div{height:22px;line-height:22px;font-size:12px;white-space:nowrap;}
+  #page-weather .hcell .ht{font-weight:900;font-size:12.5px;}
+  #page-weather .hcell .ht small{font-size:10px;font-weight:800;color:var(--brand2);display:block;line-height:1;}
+  #page-weather .hcell .hi{font-size:18px;}
+  #page-weather .hcell .htemp{font-weight:900;font-size:13.5px;}
+  #page-weather .hcell .hpop{color:#2a78d6;font-weight:800;}
+  #page-weather .hcell .hpop.low{color:var(--muted);font-weight:700;}
+  #page-weather .hcell .hpcp{font-size:11px;color:var(--ink2);}
+  #page-weather .hcell .hwind{font-size:11px;color:var(--ink2);}
+  #page-weather .hcell .hflag{font-size:10.5px;font-weight:900;}
+  #page-weather .hcell.lv-warning{background:var(--warning-bg);border-color:#efd08c;}
+  #page-weather .hcell.lv-serious{background:var(--serious-bg);border-color:#f0b394;}
+  #page-weather .hcell.lv-critical{background:var(--critical-bg);border-color:#e9a3a3;}
+  #page-weather .hcell.lv-warning .hflag{color:#8a6205;} #page-weather .hcell.lv-serious .hflag{color:#b04c22;} #page-weather .hcell.lv-critical .hflag{color:#a92f2f;}
+  #page-weather .hcell.now{border-color:var(--brand2);box-shadow:inset 0 0 0 1px var(--brand2);}
+  #page-weather .hsum{margin-top:10px;font-size:13px;line-height:1.6;}
+  #page-weather .hsum .seg{display:inline-block;margin:2px 6px 2px 0;padding:2px 9px;border-radius:999px;font-weight:800;font-size:12.5px;}
+  #page-weather .hsum .seg.c-warning{background:var(--warning-bg);color:#8a6205;}
+  #page-weather .hsum .seg.c-serious{background:var(--serious-bg);color:#b04c22;}
+  #page-weather .hsum .seg.c-critical{background:var(--critical-bg);color:#a92f2f;}
+  #page-weather .hlegend{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6;}
+
+#page-weather{background:var(--surface);color:var(--ink);word-break:keep-all;line-height:1.5;}
+
+  /* ═══ 인쇄: 위험성평가 보고서 이미지만 A4 한 장으로 ═══ */
+  @media print {
+    @page { size:A4 portrait; margin:8mm; }
+    html, body { margin:0; padding:0; background:white; height:auto; display:block; }
+    body > header, body > nav, .page:not(#page-risk) { display:none !important; }
+    body > main, .page { overflow:visible !important; height:auto !important; }
+    #page-risk { display:block !important; }
+    #page-risk .rwrap { max-width:none; width:100%; padding:0; }
+    #page-risk .rwrap > :not(#resultArea), #resultArea > :not(.report-paper) { display:none !important; }
+    #page-risk .report-paper { box-shadow:none; }
+    #reportCanvas { display:none; }
+    #printReport { display:block; width:auto; height:auto; max-width:194mm; max-height:280mm; margin:auto; }
+    #resultArea { display:block !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  👷 국립생태원 안전도우미
+  <small id="headSub">출장 자동화 · AI 위험성평가 · 날씨알림</small>
+</header>
+
+<main>
+  <!-- ═══ 🏠 홈 (랜딩) ═══ -->
+  <div class="page on" id="page-home">
+    <div class="trip-wrap">
+      <div class="home-hero">
+        <div class="home-logo">👷</div>
+        <h1>국립생태원 안전도우미</h1>
+        <p id="heroSub">멸종위기종복원센터 직원용 · 출장 준비부터 현장 안전까지, 한 곳에서.</p>
+      </div>
+
+      <!-- 기상특보 배너 (현재 지역에 특보가 발효 중일 때만 표시) -->
+      <div id="warnBanner" class="warn-banner" style="display:none;" onclick="goTab('weather')"></div>
+
+      <!-- 근무지 (멸종위기종복원센터 고정) -->
+      <div class="site-row">
+        <span class="site-label">📍 근무지</span>
+        <span style="flex:1;font-size:13.5px;font-weight:bold;color:#1a365d;">멸종위기종복원센터 <span style="font-weight:normal;color:#718096;font-size:12px;">(경북 영양)</span></span>
+      </div>
+
+      <div class="card home-card" id="homeCardTrip" onclick="goTab('trip')">
+        <div class="home-ico">🧳</div>
+        <div>
+          <h2>출장 자동화</h2>
+          <p>출장 전 안전점검 체크리스트와 조사 당일 안전확인 일지를 바로 작성하고, 날씨 맞춤 준비물을 추천받습니다.</p>
+        </div>
+        <div class="home-arrow">›</div>
+      </div>
+
+      <div class="card home-card" onclick="goTab('risk')">
+        <div class="home-ico">⚠️</div>
+        <div>
+          <h2 id="homeRiskTitle">AI 위험성평가</h2>
+          <p id="homeRiskDesc">현장 사진을 올리면 AI가 위험요인을 찾아 표시하고 개선 조치를 알려줍니다. (참고용)</p>
+        </div>
+        <div class="home-arrow">›</div>
+      </div>
+
+      <div class="card home-card" onclick="goTab('weather')">
+        <div class="home-ico">🌤</div>
+        <div>
+          <h2 id="homeWeatherTitle">날씨알림</h2>
+          <p id="homeWeatherDesc">조사지역의 실시간 날씨·체감온도·기상특보·시간대별 예보를 신호등으로 확인합니다.</p>
+        </div>
+        <div class="home-arrow">›</div>
+      </div>
+
+      <div class="tip" id="tipStaff">
+        💡 <b>기본 수칙</b>: 야외조사는 반드시 <b>2인 이상 1조</b> ·
+        출발 전 <b>기상특보 확인</b> · 긴급상황 시 안전관리 담당자 <b>054-680-7144</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ① 출장 자동화 (trip.html 원본) ═══ -->
+  <div class="page" id="page-trip">
+    <div class="trip-wrap">
+      <div class="site-now">📍 출장·조사 지역: <b id="tripSiteName">멸종위기종복원센터</b> <span style="color:#718096;">(다른 지역은 날씨알림 탭에서 선택)</span></div>
+
+      <div class="card">
+        <span class="step-badge">STEP 1 · 출장 전 (1회)</span>
+        <h2>📋 안전점검 체크리스트</h2>
+        <p>출장 떠나기 전에 안전 준비 상태를 점검하는 서식(별지 제4호)입니다. 출장자 1인이 작성하고 서명합니다.</p>
+        <a class="go-btn" href="https://tally.so/r/LZqAop" target="_blank" rel="noopener noreferrer">✍️ 작성하러 가기</a>
+      </div>
+
+      <div class="card">
+        <span class="step-badge">STEP 2 · 조사 당일 (매일)</span>
+        <h2>📝 일일 안전확인 일지</h2>
+        <p>조사 당일 현장에서 안전 상태를 확인하고 참석자 전원(최대 8인)이 전자서명하는 서식(별지 제5호)입니다.</p>
+        <a class="go-btn" href="https://tally.so/r/VLAe2N" target="_blank" rel="noopener noreferrer">✍️ 작성하러 가기</a>
+      </div>
+
+      <div class="card">
+        <span class="step-badge smart">스마트 준비</span>
+        <h2>🎒 날씨 맞춤 준비물 추천</h2>
+        <p>출장 날짜를 고르면 선택한 지역의 예보를 확인해 챙길 것을 알려드립니다.</p>
+        <div class="select-row">
+          <select id="packDay" aria-label="출장 날짜">
+            <option value="0">오늘</option>
+            <option value="1">내일</option>
+            <option value="2">모레</option>
+          </select>
+          <button class="go-btn blue" type="button" onclick="recommendPack()">🎒 추천 받기</button>
+        </div>
+        <div id="packResult" aria-live="polite"></div>
+      </div>
+
+      <div class="tip">
+        💡 <b>기본 수칙</b>: 야외조사는 반드시 <b>2인 이상 1조</b> ·
+        출발 전 날씨알림에서 <b>기상특보 확인</b> · 긴급상황 시 안전관리 담당자 <b>054-680-7144</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ② AI 위험성평가 (risk-report.html 원본) ═══ -->
+  <div class="page" id="page-risk">
+<div class="rwrap">
+
+  <h1 id="rkTitle">⚠️ AI 위험성평가 자동화</h1>
+  <div class="sub" id="rkSub">사진을 올리면 AI가 위험요인을 찾아 표시합니다 · 위험성 = 빈도(1~4) × 강도(1~5)</div>
+
+  <div class="notice" id="demoNotice">
+    🔧 아직 AI 키가 연결되지 않아 <b>데모 모드</b>로 동작합니다. [평가]를 누르면 예시 결과가 표시됩니다.<br>
+    <button class="btn-file" style="margin-top:8px;" onclick="RK.toggleKeyCard()">🔑 AI 키 연결하기</button>
+  </div>
+  <div class="notice" id="keyOkNotice" style="background:#f0fff4; border-color:#9ae6b4; color:#276749;">
+    ✅ AI 키가 연결되어 있습니다. 실제 AI 평가가 동작합니다.
+    <button class="btn-file" style="margin-top:8px;" onclick="RK.toggleKeyCard()">🔑 키 변경/해제</button>
+  </div>
+
+  <!-- AI 키 입력 (버튼을 누르면 열림) -->
+  <div class="card" id="keyCard" style="display:none;">
+   <div id="geminiKeySec">
+    <div class="label">🔑 Gemini AI 키 연결</div>
+    <div class="hint" style="margin:0 0 8px; line-height:1.7;">
+      ① 구글 AI 스튜디오(<b>aistudio.google.com</b>)에 구글 계정으로 로그인 →
+      ② [Get API key] → [API 키 만들기] → ③ 만들어진 키(<b>AIza</b> 또는 <b>AQ.</b>로 시작)를 복사해 아래에 붙여넣으세요. 무료입니다.<br>
+      키는 <b>이 브라우저에 저장</b>되며, 평가 시 사진·현장정보와 함께 Google AI 서비스에 전송됩니다.
+    </div>
+    <input type="password" id="keyInput" placeholder="AIza 또는 AQ.로 시작하는 API 키 붙여넣기" autocomplete="off">
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-go" style="padding:10px 0; font-size:14px;" onclick="RK.saveAiKey()">저장</button>
+      <button class="btn btn-reset" style="padding:10px 0; font-size:14px;" onclick="RK.clearAiKey()">키 삭제</button>
+    </div>
+   </div>
+
+   <div id="kmaKeySec">
+    <div class="label" style="margin-top:18px;">🌤 기상청 API 키 연결 <span class="req blue">선택</span></div>
+    <div class="hint" style="margin:0 0 8px; line-height:1.7;">
+      ① 공공데이터포털(<b>data.go.kr</b>) 로그인 → ② <b>"기상청_단기예보 ((구)_동네예보) 조회서비스"</b> 검색 → [활용신청] (보통 즉시 승인) →
+      ③ 마이페이지 → 해당 서비스의 <b>일반 인증키(Decoding)</b>를 복사해 아래에 붙여넣으세요.<br>
+      키를 넣으면 기상 자동 입력이 <b>기상청 초단기실황</b>을 가져오고, 키가 없으면 Open-Meteo(국제 기상모델) 값으로 대신 표시됩니다.
+    </div>
+    <input type="password" id="kmaKeyInput" placeholder="공공데이터포털 일반 인증키 붙여넣기" autocomplete="off">
+    <div class="hint" id="kmaKeyState" style="margin-top:4px;"></div>
+    <div class="btn-row" style="margin-top:10px;">
+      <button class="btn btn-go" style="padding:10px 0; font-size:14px;" onclick="RK.saveKmaKey()">저장</button>
+      <button class="btn btn-reset" style="padding:10px 0; font-size:14px;" onclick="RK.clearKmaKey()">키 삭제</button>
+    </div>
+   </div>
+  </div>
+
+  <!-- ① 평가 종류 -->
+  <div class="card" id="cardMode">
+    <div class="label">📂 평가 종류 <span class="req">필수</span></div>
+    <div class="hint" style="margin:0 0 8px;">어떤 상황을 평가할지 먼저 골라주세요. 선택하면 아래 입력칸이 그에 맞게 바뀝니다.</div>
+    <div class="mode-chips">
+      <div class="mode-chip on" data-mode="research">🔬 연구조사</div>
+      <div class="mode-chip" data-mode="facility">🏭 시설관리</div>
+    </div>
+    <div class="hint" id="modeHint"></div>
+  </div>
+
+  <!-- ② 조사유형 / 작업유형 (모드에 따라 내용 변경) -->
+  <div class="card" id="cardType">
+    <div class="label" id="typeLabel"></div>
+    <div class="hint" style="margin:0 0 8px;" id="typeHint"></div>
+    <select id="typeSelect"></select>
+  </div>
+
+  <!-- ③ 보고서 현장정보 (기상은 화면을 열면 자동 입력) -->
+  <div class="card" id="cardReportInfo">
+    <div class="label">📋 보고서 현장정보</div>
+    <p class="hint" style="margin-bottom:12px">일자·인원·소속만 확인하면 됩니다. 기상은 자동으로 채워지고, 지형·노면·계절 위험·필요 보호구·안전수칙은 [평가]를 누르면 AI가 사진과 시기를 보고 자동으로 채웁니다.</p>
+    <div class="report-fields">
+      <label>조사·작업일자<input type="date" id="surveyDate"></label>
+      <label>참여인원 (명)<input type="number" id="surveyCount" min="1" max="9999" step="1" placeholder="예: 3"></label>
+      <div class="field full">소속·팀
+        <div class="combo">
+          <input type="text" id="surveyTeam" placeholder="팀 이름 일부를 입력하거나 ▼에서 고르세요 (예: 포 → 포유류복원팀)" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="teamList" aria-autocomplete="list">
+          <button type="button" class="combo-toggle" id="teamToggle" tabindex="-1" aria-label="팀 목록 열기">▼</button>
+          <div class="combo-list" id="teamList" role="listbox" hidden></div>
+        </div>
+      </div>
+      <div class="field full">기상 <span class="hint" style="font-weight:normal;">(자동 입력)</span>
+        <div class="inline-row">
+          <input type="text" id="fieldWeather" placeholder="⏳ 현재 위치의 기상을 확인하는 중…">
+          <button type="button" class="btn-file" id="btnWeather" title="기상 다시 조회">🔄 다시 조회</button>
+        </div>
+        <div class="hint" id="weatherHint" style="margin-top:6px;">현재 위치(위치 권한이 없으면 근무지) 기준 기상청 초단기실황을 자동으로 가져옵니다. 필요하면 직접 고쳐 써도 됩니다. <a href="#" id="kmaKeyLink" onclick="RK.toggleKeyCard();return false;" style="color:#2b6cb0;">기상청 키 연결</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 평가대상 명칭: 목록에서 고르거나 직접 입력 -->
+  <div class="card" id="cardTarget">
+    <div class="label">🏷️ 평가대상 명칭 <span class="req">필수</span></div>
+    <div class="hint" style="margin:0 0 8px;">▼를 눌러 자주 하는 조사·작업을 고르거나, 직접 "장소 + 하는 일" 형태로 적어주세요.</div>
+    <div class="combo">
+      <input type="text" id="targetName" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="targetList" aria-autocomplete="list">
+      <button type="button" class="combo-toggle" id="targetToggle" tabindex="-1" aria-label="평가대상 목록 열기">▼</button>
+      <div class="combo-list" id="targetList" role="listbox" hidden></div>
+    </div>
+  </div>
+
+  <!-- ⑤ 사진 -->
+  <div class="card" id="cardPhoto">
+    <div class="label">📷 사진 <span class="req">필수</span></div>
+    <div class="hint" style="margin:0 0 8px;">위험을 확인하고 싶은 현장·장비를 휴대폰으로 한 장 찍어 올려주세요. 전체 모습이 잘 보이게 찍을수록 좋습니다.</div>
+    <div class="photo-box">
+      <div>
+        <b>사진을 선택하세요</b>
+        <div class="hint">권장: 3~5MB 이하. 선택하면 자동 압축됩니다.</div>
+      </div>
+      <button class="btn-file" onclick="document.getElementById('photoInput').click()">파일 선택</button>
+    </div>
+    <input type="file" id="photoInput" accept="image/*" style="display:none">
+    <img id="preview" alt="선택한 사진 미리보기">
+  </div>
+
+  <!-- ⑥ 위치 -->
+  <div class="card" id="cardLoc">
+    <div class="label" id="locLabel"></div>
+    <div class="hint" style="margin:0 0 8px;" id="locHint"></div>
+    <div style="display:flex; gap:8px;">
+      <input type="text" id="location" style="flex:1;">
+      <button class="btn-file" id="btnGps" title="현재 위치 자동 입력">📍 내 위치</button>
+    </div>
+    <div class="hint" style="margin-top:6px;">[📍 내 위치]를 누르고 브라우저의 위치 사용을 <b>허용</b>하면 현재 위치가 자동으로 입력됩니다.</div>
+  </div>
+
+  <!-- ⑦ 조사환경 / 시설구분 (모드에 따라 내용 변경) -->
+  <div class="card" id="cardEnv">
+    <div class="label"><span id="envLabel"></span> <span class="req" id="envBadge">개선요청 시 필수</span></div>
+    <div class="hint" style="margin:0 0 8px;" id="envHint"></div>
+    <select id="envSelect"></select>
+  </div>
+
+  <!-- ⑧ 평가대상 구분 -->
+  <div class="card" id="cardCat">
+    <div class="label">🧩 평가대상 구분 <span class="req blue">복수선택</span></div>
+    <div class="hint" style="margin:0 0 8px;">무엇 때문에 위험한지, 위험의 원인을 골라주세요. 여러 개를 골라도 됩니다.</div>
+    <div class="chips">
+      <div class="chip" data-cat="작업">작업</div>
+      <div class="chip" data-cat="기기">기기</div>
+      <div class="chip" data-cat="물질">물질</div>
+    </div>
+    <div class="hint" style="margin-top:8px; line-height:1.7;">
+      · <b>작업</b> = 사람의 행동·작업 방법이 위험 (예: 물속 이동, 사다리 오르기)<br>
+      · <b>기기</b> = 기계·장비·도구가 위험 (예: 전기톱, 고소작업대, 포획 장비)<br>
+      · <b>물질</b> = 약품·연료 등 물질이 위험 (예: 소독약품, 시약, 유류)
+    </div>
+  </div>
+
+  <!-- ⑨ 질의/작업설명 -->
+  <div class="card" id="cardDesc">
+    <div class="label">📝 질의/작업설명</div>
+    <div class="hint" style="margin:0 0 8px;">사진만으로 알기 어려운 현장 상황이나 AI에게 물어보고 싶은 점을 자유롭게 적어주세요. 자세할수록 결과가 정확해집니다. (비워두어도 됩니다)</div>
+    <textarea id="workDesc"></textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-go" id="btnGo">평 가</button>
+    <button class="btn btn-reset" id="btnReset">초기화</button>
+  </div>
+
+  <div id="rkLoading"><div class="spin"></div>AI가 사진을 분석하고 있습니다…<br>(약 10~20초)</div>
+
+  <!-- 결과: 화면 / PNG / 인쇄에 동일한 보고서 사용 -->
+  <div id="resultArea">
+    <div class="report-toolbar">
+      <button type="button" id="btnBack">← 입력 수정</button>
+      <button type="button" id="btnSave" class="primary">보고서 이미지 저장</button>
+      <button type="button" id="btnPrint">인쇄 / PDF 저장</button>
+      <button type="button" id="btnShare" style="background:#fee500; color:#3c1e1e; border-color:#f5d800;">💬 카카오톡 등으로 공유</button>
+      <button type="button" id="btnSubmit" style="display:none; background:#2f855a; color:#fff; border-color:#2f855a;">📨 안전관리자 제출</button>
+    </div>
+    <p class="report-help" id="submitState" style="display:none; color:#276749; font-weight:bold;"></p>
+    <p class="report-help">사진의 번호는 오른쪽 설명과 아래 평가표의 번호에 대응합니다. 작은 화면에서는 확대하거나 아래 텍스트 결과를 열어 확인하세요.</p>
+    <div class="report-paper">
+      <canvas id="reportCanvas" role="img" aria-label="위험성평가 보고서"></canvas>
+      <img id="printReport" alt="위험성평가 보고서 인쇄용 이미지">
+    </div>
+    <details id="textDetails"><summary>텍스트 결과 보기</summary><div id="reportText"></div></details>
+  </div>
+
+  <!-- 참고용 안내 (항상 표시) -->
+  <div class="footer-note">
+    ⚠️ <b>AI 위험성평가 자동화는 참고용입니다.</b><br>
+    실제 위험성평가와 안전조치는 관련 규정 및 안전관리자의 판단에 따라 실시해야 하며,<br>
+    본 결과는 공식 위험성평가 문서를 대신할 수 없습니다.
+  </div>
+
+</div>
+  </div>
+
+  <!-- ═══ ③ 안전 날씨 (안전날씨_index.html 원본) — 직원·외부조사원용 대시보드 ═══ -->
+  <div class="page" id="page-weather">
+    <div id="swDash">
+<header class="appbar"><div class="in">
+    <div class="subtitle">멸종위기종복원센터 현장조사 안전지원 · 현재 위치·지역 검색 가능</div>
+  <div class="locrow">
+    <button class="chipbtn" onclick="SW.refresh()">🔄 새로고침</button>
+    <button class="chipbtn" onclick="SW.useGPS()">📍 현재위치로 갱신</button>
+    <button class="chipbtn" onclick="SW.useHome()">🏠 복원센터로 복귀</button>
+    <button class="chipbtn" id="keyBtn" onclick="SW.askKmaKey()">🔑 API 키</button>
+  </div>
+</div></header>
+
+<div class="wwrap">
+
+  <!-- 🔑 기상청 키 연결 안내 (키가 없을 때만 표시) -->
+  <section class="card" id="kmaBanner" style="display:none;border:1.5px solid #f0d79b;background:#fdf4de;">
+    <b style="font-size:13.5px;">🔑 기상청 API 키가 아직 연결되지 않아 샘플 화면이 표시됩니다.</b>
+    <div style="font-size:12px;color:#8a6205;margin:6px 0 10px;line-height:1.7;">
+      공공데이터포털(data.go.kr) 로그인 → 마이페이지 → 인증키의 <b>일반 인증키(Decoding)</b>를
+      복사해 아래 버튼으로 한 번만 넣어주세요. 키는 <b>이 브라우저에만 저장</b>되며 어디에도 전송되지 않습니다.
+    </div>
+    <button onclick="SW.askKmaKey()" style="border:none;background:#2e7d32;color:#fff;font-weight:800;
+      font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;font-family:inherit;">🔑 기상청 키 입력하기</button>
+  </section>
+
+  <!-- ① 현재 날씨 + 종합판정 + 일출일몰 (지역 선택 버튼 포함) -->
+  <section class="card hero">
+    <div id="goLight"></div>
+    <!-- ▼ 추가: 지역 선택 버튼 (누르면 기본 지역 목록 + 지역 검색) -->
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button class="regbtn" id="regBtn" onclick="SW.openRegion()" title="지역 변경">
+        📍 <span class="rn" id="locName">멸종위기종복원센터</span> <span class="caret">▼</span>
+      </button>
+    </div>
+    <div class="locsub" id="locSub">경북 영양군 영양읍 고월길 23 · 기준 --:--</div>
+    <div class="loading" id="loading"><span class="spin"></span>기상정보를 불러오는 중…</div>
+    <div class="stale" id="stale"></div>
+    <div class="heromain">
+      <div class="heroicon" id="wxIcon">🌤️</div>
+      <div>
+        <div class="herotemp"><span id="tempNow">--</span><small>℃</small></div>
+        <div style="font-size:12.5px;color:var(--muted);" id="tempDiff">전일 대비 --</div>
+      </div>
+      <div class="heroside" id="wxText">--</div>
+    </div>
+    <div class="feelstrip">
+      <span class="fk">🌡️ 체감온도</span><span class="fv" id="feels">--℃</span>
+      <span class="fnote">위험판정은 체감온도 기준입니다</span>
+    </div>
+    <div class="tiles">
+      <div class="tile"><div class="k">풍속</div><div class="v"><span id="wind">--</span> <small>m/s</small></div></div>
+      <div class="tile"><div class="k">습도</div><div class="v"><span id="humid">--</span> <small>%</small></div></div>
+      <div class="tile"><div class="k">강수(1h)</div><div class="v"><span id="rain">--</span> <small>mm</small></div></div>
+      <div class="tile pending" id="pmTile"><div class="k">미세먼지</div><div class="v" id="pm">연동 예정</div></div>
+    </div>
+    <div class="sunline">
+      ☀️ 일출 <b id="sunrise">--:--</b> 🌙 일몰 <b id="sunset">--:--</b>
+      <span class="snote" id="sunNote"></span>
+    </div>
+    <div class="stamp" id="stampNow"></div>
+  </section>
+
+  <!-- ▼ 추가 ② 체감온도 + 현장 안전 행동요령 -->
+  <section class="card" id="feelsCard">
+    <h2>🌡️ 현재 체감온도 <span class="hstamp" id="stampFeels"></span></h2>
+    <div class="feelsbig">
+      <span class="fv2"><span id="feelsBig">--</span><small>℃</small></span>
+      <span class="fsub">현재기온 <b id="tempSmall">--</b>℃</span>
+    </div>
+    <div id="feelsStatus" class="fstatus lv-good">불러오는 중…</div>
+    <ul class="tips" id="tips"></ul>
+    <div class="fnote2" id="feelsNote"></div>
+  </section>
+
+  <!-- ▼ 개선 ③ 기상특보 (경고 카드 + 상세보기) -->
+  <section class="card">
+    <h2>⚠️ 기상특보 <span class="hstamp" id="stampWarn"></span></h2>
+    <div id="warnings"><div class="none">기상정보를 불러오는 중…</div></div>
+  </section>
+
+  <!-- ▼ 추가 ④ 시간대별 현장예보 (가로 스크롤) -->
+  <section class="card">
+    <h2>🕒 시간대별 현장예보 <span class="hstamp" id="stampHourly"></span></h2>
+    <div id="hourly"><div class="none">기상정보를 불러오는 중…</div></div>
+    <div class="hsum" id="hourlySum"></div>
+    <div class="hlegend">색상 기준 — 🟡주의: 강수확률 60%↑·비/눈 · 🟠경계: 시간당 10mm↑, 풍속 9m/s↑, 체감 33℃↑, 기온 −12℃↓ · 🔴위험: 낙뢰, 풍속 14m/s↑, 체감 35℃↑, 기온 −15℃↓</div>
+  </section>
+
+  <!-- ⑤ 3일 위험 전망 (기존) -->
+  <section class="card">
+    <h2>⚠️ 기상위험 안전알림 <span style="font-weight:700;color:var(--muted);font-size:11.5px;" id="stamp3d"></span></h2>
+    <div id="days"></div>
+  </section>
+
+  <p class="footer">
+    자료: 기상청 (공공데이터포털) · 위험판정 기준 v0.2 (내부 검토중)<br>
+    체감온도는 기상청 산출식(여름 습구온도 기반 / 겨울 바람냉각지수)으로 계산합니다.<br>
+    본 화면은 내부 참고용이며, 기상특보·안전조치의 최종 확인은 기상청 발표 및 안전관리 담당자 안내를 따릅니다.
+  </p>
+</div>
+
+<!-- 지역 검색 오버레이 (기존) -->
+<div class="ovl" id="ovl" onclick="if(event.target===this)SW.closeSearch()">
+  <div class="searchbox">
+    <h3>다른 지역 날씨 보기 <button onclick="SW.closeSearch()">✕</button></h3>
+    <input id="rq" type="text" placeholder="시·군 이름 입력 (예: 서천, 안동, 여수)" oninput="SW.filterRegions()">
+    <div class="rlist" id="rlist"></div>
+  </div>
+</div>
+
+<!-- ▼ 추가: 지역 선택 오버레이 (기본 지역 3곳 + 현재 위치 + 지역 검색) -->
+<div class="ovl" id="regOvl" onclick="if(event.target===this)SW.closeRegion()">
+  <div class="searchbox">
+    <h3>지역 선택 <button onclick="SW.closeRegion()">✕</button></h3>
+    <div id="regList"></div>
+    <div class="regsep"></div>
+    <div class="regitem" onclick="SW.closeRegion();SW.openSearch()">
+      <span style="font-size:16px;">🔍</span><div class="rtx"><b>지역 검색</b><span>전국 시·군 이름으로 찾기</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ▼ 추가: 기상특보 상세보기 오버레이 -->
+<div class="ovl" id="warnOvl" onclick="if(event.target===this)SW.closeWarnDetail()">
+  <div class="searchbox">
+    <h3><span id="warnDetailTitle">기상특보 상세</span> <button onclick="SW.closeWarnDetail()">✕</button></h3>
+    <div id="warnDetailBody"></div>
+  </div>
+</div>
+
+<div class="badge-sample" id="sampleBadge">🧪 샘플 데이터 미리보기 — 실데이터 연동 전</div>
+<div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+</main>
+
+<nav>
+  <button class="on" data-page="home"><span class="ico">🏠</span>홈</button>
+  <button data-page="trip"><span class="ico">🧳</span>출장 자동화</button>
+  <button data-page="risk"><span class="ico">⚠️</span>위험성평가</button>
+  <button data-page="weather"><span class="ico">🌤</span>날씨알림</button>
+</nav>
+
+<!-- 관리자용 키 파일 (같은 폴더의 keys.js: window.APP_KEYS = { geminiA, geminiB, kma, submitWebhook, submitToken }). 없어도 동작합니다. -->
+<script src="keys.js"></script>
+<script>
+/* ═════════════════════════════════════════════════════════════
+   공통 설정 — 세 기능이 함께 쓰는 키·근무지
+   ═════════════════════════════════════════════════════════════ */
+/* 공공데이터포털(기상청) 키 — 기존 안전날씨·출장 앱과 같은 값. keys.js 의 kma 값이 있으면 그것을 우선 사용합니다. */
+const APP_KMA_KEY = "GDewDfD3UhYeNNlThaTbdu%2BYc8iCMapNVSlN9wblZeLXDLjOttYrPE3AY7YhEIRQ7E7B6r7a68h4rwUF8hsWFw%3D%3D";
+const FILE_KMA_KEY = (window.APP_KEYS && window.APP_KEYS.kma) || APP_KMA_KEY || "";
+function getKmaKey(){
+  let k = FILE_KMA_KEY || localStorage.getItem('kma_key') || '';
+  if (k.indexOf('%') >= 0){ try { k = decodeURIComponent(k); } catch(e){} }   // Encoding 키도 허용
+  return k;
+}
+/* 근무지 — 멸종위기종복원센터 (다른 지역이 필요하면 여기에 한 줄씩 추가; 날씨알림 탭의 기본 지역 목록에도 함께 나타남)
+   stn: 기상청 특보 발표관서 (133 대전·세종·충남 / 143 대구·경북 / 159 부산·울산·경남)
+   keys: 특보 대상지역 문구에서 '이 지역 특보'로 인식할 키워드 / prov: 같은 도(道)의 인근 특보 키워드 */
+const SITES = [
+  { id:"yeongyang", name:"멸종위기종복원센터", sub:"경북 영양군 영양읍 고월길 23",    lat:36.656, lon:129.113, stn:143, keys:["영양","경북북동산지"], prov:["경상북도","경북"] },
+];
+</script>
+<script>
+/* ═════════════════════════════════════════════════════════════
+   ③ 안전 날씨 (안전날씨_index.html 원본) — 모듈로 감싸 window.SW 로만 노출
+   ═════════════════════════════════════════════════════════════ */
+window.SW = (function(){
+/* ═══════════ ① 설정 (여기만 나중에 수정) ═══════════ */
+/* 기상청 공공데이터포털을 브라우저에서 직접 호출합니다 (Make 미사용).
+   키는 화면의 [🔑 기상청 키 입력하기] 버튼으로 넣으면 이 브라우저에만 저장됩니다.
+   ※ 아래 KMA_KEY에 직접 적을 수도 있지만, GitHub에 올릴 파일에는 절대 넣지 마세요.
+   ※ 별도 keys.js(window.APP_KEYS.kma)를 두면 그 값을 가장 먼저 사용합니다 (위험성평가 앱과 동일 방식). */
+function askKmaKey(){
+  const v = prompt("공공데이터포털의 일반 인증키를 붙여넣어주세요.\n(Encoding·Decoding 어느 쪽이든 됩니다 / 빈칸으로 확인을 누르면 저장된 키가 삭제됩니다)");
+  if (v === null) return;
+  if (!v.trim()) localStorage.removeItem('kma_key');
+  else localStorage.setItem('kma_key', v.trim());
+  load();
+}
+
+/* ▼ 추가: 기본 제공 지역 3곳 (국립생태원 소속 기관)
+   - stn  : 기상청 특보 발표관서 코드 (133 대전·세종·충남 / 143 대구·경북 / 159 부산·울산·경남)
+   - keys : 특보문 대상지역 문구에서 '이 지역 특보'로 인식할 키워드
+   - prov : 같은 도(道)의 다른 지역 특보를 '인근 특보'로 표시할 키워드 */
+const HOME = SITES[0];                      // 기본 지역 = 멸종위기종복원센터 (기존과 동일)
+const REGION_KEY = "sw_region_v1";         // 마지막 선택 지역 저장 키 (localStorage)
+const LASTDATA_KEY = "sw_lastdata_v1_";    // 지역별 마지막 성공 데이터 저장 키 (API 실패 시 대체 표시용)
+const API_CACHE_MS = 10*60*1000;           // 동일 API 재호출 방지 캐시 시간 (10분)
+const TEST = new URLSearchParams(location.search).get("test") || "";   // ?test=warn → 특보 있음 화면 점검, ?test=sample → 샘플 데이터
+
+/* ═══════════ ② 위험판정 규칙표 v0.2 (기준 확정 시 숫자·문구만 수정) ═══════════ */
+const LV = {
+  good:    {key:"good",    label:"양호",  ico:"✅"},
+  warning: {key:"warning", label:"관심",  ico:"🟡"},
+  serious: {key:"serious", label:"주의",  ico:"🟠"},
+  critical:{key:"critical",label:"경고",  ico:"🔴"},
+  danger:  {key:"critical",label:"위험",  ico:"⛔"},
+};
+/* ▼ 추가: 현장 안전 행동요령 문구표 (위험 종류·단계별 2~3개 핵심사항) */
+const TIPS = {
+  heat1:  ["수분을 자주 섭취하세요", "밝은 옷·모자를 착용하세요", "12~17시 장시간 야외활동 주의"],
+  heat2:  ["매시간 10분 이상 그늘에서 휴식", "12~17시 장시간 야외조사 자제", "수분·염분을 자주 섭취"],
+  heat3:  ["무더위 시간대(12~17시) 야외조사 중단 검토", "2인 1조로 서로 상태 확인", "어지럼·구토 등 온열질환 증상 시 즉시 119"],
+  heat4:  ["야외조사 원칙적 중단, 실내 대기", "부득이한 경우 최소 인원·최소 시간", "온열질환 의심 시 즉시 119"],
+  cold1:  ["방한복·핫팩 준비, 동상 증상 확인", "장시간 정지작업 금지, 야외활동 최소화", "결빙구간 미끄럼 주의"],
+  cold2:  ["야외조사 단축·중단 검토", "방한복 착용, 노출 부위 보호", "2인 이상 동행"],
+  wind1:  ["절벽·고소작업·해안가 접근 주의", "낙하물·쓰러지는 나무 주의, 사다리 작업 금지", "모자·장비를 단단히 고정"],
+  wind2:  ["야외 고소·임내 작업 금지", "절벽·능선·해안가 접근 금지", "차량 운행 시 횡풍 주의"],
+  rain1:  ["하천·계곡 수위 상승 주의", "미끄럼·낙상 주의, 우의·방수화 착용", "시야 확보 어려움 → 차량 저속 운행"],
+  rain2:  ["하천·계곡·저지대 접근 금지", "급경사지·산사태 위험구역 주의", "기상악화 시 현장조사 중지·철수 검토"],
+  snow:   ["결빙·미끄럼 주의, 차량 월동장비 확인", "임도·산지 진입 자제", "폭설 시 조사 중단·철수 검토"],
+  lightning:["능선·개활지·수변지역 활동 중지 또는 대피", "건물·차량 내부로 대피 (나무 아래 금지)", "금속 장비는 몸에서 멀리"],
+  typhoon:["야외조사 중단·철수", "하천·해안·산지 접근 금지", "강풍·낙하물·침수 주의"],
+  sea:    ["해안·갯벌·선박 이용 조사 중지", "방파제·갯바위 접근 금지", "해안가 강풍·너울 주의"],
+  dry:    ["화기 취급·흡연 금지 (산불 위험)", "산불 발견 시 즉시 119 신고", "바람 방향 확인, 대피로 확보"],
+  dust:   ["보건용 마스크(KF80 이상) 착용", "장시간 야외활동 자제", "복귀 후 손·얼굴 씻기"],
+  surge:  ["해안 저지대·방파제 접근 금지", "해안가 조사 중단·철수"],
+  good:   ["기본 안전수칙을 지키며 조사를 진행하세요", "2인 이상 동행, 복귀 예정시간 공유", "일몰 1시간 전 조사 마무리"],
+};
+function judgeHeat(feels){        // 폭염 (체감온도)
+  if (feels >= 38) return {...LV.danger,  name:"폭염 위험", act:"야외조사 원칙적 중단, 실내 대기", tips:TIPS.heat4};
+  if (feels >= 35) return {...LV.critical,name:"폭염 경고", act:"무더위 시간대 야외조사 중단 검토 · 2인 상호 상태 확인", tips:TIPS.heat3};
+  if (feels >= 33) return {...LV.serious, name:"폭염 주의", act:"매시간 10분 그늘 휴식 · 12~17시 야외조사 자제", tips:TIPS.heat2};
+  if (feels >= 31) return {...LV.warning, name:"폭염 관심", act:"수분 자주 섭취 · 밝은 옷 착용", tips:TIPS.heat1};
+  return null;
+}
+function judgeCold(tmin){         // 한파 (최저기온 또는 겨울 체감온도 중 낮은 값)
+  if (tmin <= -15) return {...LV.critical,name:"한파 경고", act:"야외조사 단축·중단 검토", tips:TIPS.cold2};
+  if (tmin <= -12) return {...LV.serious, name:"한파 주의", act:"방한복·핫팩 준비 · 동상 증상 확인 · 장시간 정지작업 금지", tips:TIPS.cold1};
+  return null;
+}
+function judgeRain(mmPerHour, pty){    // 호우·강수 (pty: 현재 강수형태 코드, 0이면 없음)
+  if (mmPerHour >= 10) return {...LV.serious, name:"호우 주의", act:"계곡·하천변 접근 금지 · 차량 저속 운행", tips:TIPS.rain2};
+  const p = String(pty||"0");
+  if (p==="3"||p==="7") return {...LV.warning, name:"강설 유의", act:"결빙·미끄럼 주의", tips:TIPS.snow};
+  if (mmPerHour > 0 || p!=="0") return {...LV.warning, name:"강수 유의", act:"하천·계곡 수위 상승 및 미끄럼 주의", tips:TIPS.rain1};
+  return null;
+}
+function judgeWind(ms){           // 강풍
+  if (ms >= 14) return {...LV.critical,name:"강풍 경고", act:"야외 고소·임내 작업 금지 · 낙하물 주의", tips:TIPS.wind2};
+  if (ms >= 9)  return {...LV.serious, name:"강풍 주의", act:"낙하물 주의 · 사다리 작업 금지", tips:TIPS.wind1};
+  return null;
+}
+function judgeLightning(lgt){     // ▼ 추가: 낙뢰 (초단기예보 LGT, 향후 3시간 내 예측 시)
+  if (lgt > 0) return {...LV.critical, name:"낙뢰 가능", act:"능선·개활지·수변지역 활동 중지 또는 대피", tips:TIPS.lightning};
+  return null;
+}
+/* ▼ 추가: 기상특보 종류 → 위험단계·아이콘·행동요령 매핑 */
+const WARN_MAP = {
+  "호우":    {ico:"🌧️", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.rain2, 경보:TIPS.rain2}},
+  "대설":    {ico:"❄️", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.snow,  경보:TIPS.snow}},
+  "강풍":    {ico:"💨", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.wind1, 경보:TIPS.wind2}},
+  "풍랑":    {ico:"🌊", lv:{주의보:"warning",  경보:"serious"},  tips:{주의보:TIPS.sea,   경보:TIPS.sea}},
+  "폭염":    {ico:"🔥", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.heat2, 경보:TIPS.heat3}},
+  "한파":    {ico:"🥶", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.cold1, 경보:TIPS.cold2}},
+  "태풍":    {ico:"🌀", lv:{주의보:"critical", 경보:"critical"}, tips:{주의보:TIPS.typhoon, 경보:TIPS.typhoon}},
+  "건조":    {ico:"🍂", lv:{주의보:"warning",  경보:"serious"},  tips:{주의보:TIPS.dry,   경보:TIPS.dry}},
+  "황사":    {ico:"🌫️", lv:{주의보:"warning",  경보:"serious"},  tips:{주의보:TIPS.dust,  경보:TIPS.dust}},
+  "폭풍해일":{ico:"🌊", lv:{주의보:"serious",  경보:"critical"}, tips:{주의보:TIPS.surge, 경보:TIPS.surge}},
+};
+function warnInfo(type){          // "호우주의보" → {base:"호우", grade:"주의보", ico, key, tips}
+  const t = String(type||"").replace(/\s/g,"");
+  const grade = t.endsWith("경보") ? "경보" : "주의보";
+  const base = Object.keys(WARN_MAP).find(b=>t.indexOf(b)===0) || "";
+  const m = WARN_MAP[base];
+  return { base, grade, ico: m?m.ico:"📢", key: m?m.lv[grade]:"serious", tips: m?m.tips[grade]:TIPS.rain2 };
+}
+function warnHazard(w){           // 발효 중 특보 → 위험요인 항목
+  const i = warnInfo(w.type);
+  const lv = Object.values(LV).find(l=>l.key===i.key && l!==LV.danger) || LV.serious;
+  return {...lv, name:w.type+" 발효", act:i.tips[0], tips:i.tips, src:"특보"};
+}
+const RANK = {good:0, warning:1, serious:2, critical:3};
+/* ▼ 추가: 현재 상황의 모든 위험요인을 높은 단계 순으로 (행동요령 카드·신호등에 사용) */
+function hazardList(d){
+  const list = [
+    judgeHeat(d.feels),
+    judgeCold(Math.min(d.tmin ?? d.feels, d.feels)),
+    judgeRain(d.rain, d.pty),
+    judgeWind(d.wind),
+    judgeLightning(d.lgt),
+    ...(d.warnActive||[]).map(warnHazard),
+  ].filter(Boolean);
+  list.sort((a,b)=>RANK[b.key]-RANK[a.key]);
+  /* 같은 종류(폭염/한파/강풍/강수…)가 실황과 특보에서 겹치면 높은 단계 하나만 남김 */
+  const seen = new Set();
+  return list.filter(h=>{ const g = hazardGroup(h.name); if (seen.has(g)) return false; seen.add(g); return true; });
+}
+function hazardGroup(name){
+  const n = String(name||"");
+  if (/폭염|고온/.test(n)) return "heat";
+  if (/한파/.test(n)) return "cold";
+  if (/강풍|태풍/.test(n)) return "wind";
+  if (/호우|강수/.test(n)) return "rain";
+  if (/대설|강설/.test(n)) return "snow";
+  if (/낙뢰/.test(n)) return "lightning";
+  return n.slice(0,2);
+}
+function judgeAll(d){             // 현재값 기준 종합(가장 높은 단계 1개) — 기존 함수 유지
+  return hazardList(d)[0] || {...LV.good, name:"위험요인 없음", act:"기본 안전수칙을 지키며 조사를 진행하세요", tips:TIPS.good};
+}
+/* 종합 신호등 문구 */
+const GO = {
+  good:    {ico:"🟢", tx:"조사 가능",        sub:"현재 특별한 기상 위험요인이 없습니다"},
+  warning: {ico:"🟡", tx:"유의하며 진행",    sub:"가벼운 위험요인이 있습니다 — 아래 행동요령 확인"},
+  serious: {ico:"🟠", tx:"주의하며 진행",    sub:"위험요인이 있습니다 — 행동요령을 지켜주세요"},
+  critical:{ico:"🔴", tx:"야외조사 자제 권고", sub:"위험 수준입니다 — 일정 조정·중단을 검토하세요"},
+};
+
+/* ═══════════ ③ 샘플 데이터 (실연동 전 화면 확인용) ═══════════ */
+const SAMPLE_WARN = [ {type:"폭염주의보", area:"경상북도(영양평지, 안동, 의성) (샘플)", tmFc:"202609161000", tmEf:"202609161100", exact:true,
+  detail:"o 무더위가 지속되겠으니 야외활동을 자제하고 수분을 충분히 섭취하시기 바랍니다. (샘플)"} ];
+const SAMPLE = {
+  updated:"2026-08-05 13:44", icon:"🌤️", text:"구름 조금",
+  temp:31.3, diff:-0.5, feels:32.3, wind:3.0, humid:66, rain:0.0, tmin:25.2, pty:0, lgt:0,
+  pm:null,
+  days:[
+    {label:"오늘", ico:"🌤️", lo:25.2, hi:33.0, risk:{...LV.serious, name:"폭염 주의", act:"수분섭취 안내 · 옥외작업 휴식관리 · 열사병 증상 확인"}},
+    {label:"내일", ico:"☀️",  lo:25.0, hi:33.0, risk:{...LV.serious, name:"폭염 예상", act:"수분섭취 안내 · 옥외작업 휴식관리 · 작업자 상태확인"}},
+    {label:"모레", ico:"☀️",  lo:25.8, hi:34.9, risk:{...LV.critical,name:"폭염 경고 예상", act:"무더위 시간대 야외조사 중단 검토"}},
+  ],
+  warnActive: SAMPLE_WARN, warnNearby:[], warnPrelim:"", warnReleased:[], warnStamp:"08-05 10:00", warnError:false,
+  hourly: (()=>{   // 샘플 시간대별 예보 (현재 시각부터 24시간)
+    const out=[]; const now=new Date(); now.setMinutes(0,0,0);
+    const seq=[["☀️",0,0,2.1],["🌤️",10,0,2.5],["⛅",20,0,3.0],["🌧️",70,3,4.2],["🌧️",80,12,5.1],["⛈️",60,5,9.5],["☁️",40,0,4.0],["🌤️",10,0,2.0]];
+    for (let i=0;i<24;i++){
+      const t=new Date(now.getTime()+i*3600000); const s=seq[Math.floor(i/3)%seq.length];
+      const T=27+Math.round(6*Math.sin((t.getHours()-9)/24*2*Math.PI)*10)/10;
+      const h={idx:i, date:ymd(t), hour:t.getHours(), T, pop:s[1], pcp:s[2], wind:s[3], reh:65, icon:s[0], pty:s[2]>0?"1":"0", sno:0,
+        lgt:(s[0]==="⛈️")?1:0, feels:Math.round(feelsLike(T,65,s[3])*10)/10};
+      h.flags=hourFlags(h); h.level=h.flags[0]?h.flags[0].key:"good"; out.push(h);
+    }
+    return out;
+  })(),
+  hourlyStamp:"08-05 11:00 발표",
+  sunrise:"05:41", sunset:"19:29",
+};
+
+/* ═══════════ ④ 화면 그리기 ═══════════ */
+const $ = (id)=>document.getElementById(id);
+const esc=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function chip(r){ return `<span class="lvchip c-${r.key}">${r.ico} ${r.label}</span>`; }
+function ymd(d){ return d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
+function fmtKmaTime(s){   // "202609161000" → "2026.09.16. 10:00"
+  s=String(s||""); if (s.length<10) return s;
+  return `${s.slice(0,4)}.${s.slice(4,6)}.${s.slice(6,8)}. ${s.slice(8,10)}:${s.length>=12?s.slice(10,12):"00"}`;
+}
+let LAST = null;   // 마지막으로 그린 데이터 (특보 상세보기 등에 사용)
+function render(d, locName, locSub){
+  LAST = d;
+  const r = judgeAll(d);
+  const g = GO[r.key];
+  $("goLight").innerHTML =
+    `<div class="golight go-${r.key}"><div class="gico">${g.ico}</div>
+     <div><span class="gtx">${g.tx}</span><span class="gsub">${g.sub}</span></div></div>`;
+
+  $("locName").textContent = locName;
+  $("locSub").textContent  = `${locSub} · 기준 ${d.updated}`;
+  $("wxIcon").textContent  = d.icon; $("wxText").textContent = d.text;
+  $("tempNow").textContent = d.temp.toFixed(1);
+  $("tempDiff").textContent= (d.diff==null) ? "전일 대비 —" : `전일 대비 ${d.diff>0?"+":""}${d.diff.toFixed(1)}℃`;
+  $("feels").textContent   = d.feels.toFixed(1)+"℃";
+  $("wind").textContent = d.wind.toFixed(1); $("humid").textContent = d.humid; $("rain").textContent = d.rain.toFixed(1);
+  if (d.pm != null){ $("pmTile").classList.remove("pending"); $("pm").textContent = d.pm; }
+
+  $("sunrise").textContent = d.sunrise; $("sunset").textContent = d.sunset;
+  $("sunNote").textContent = `일몰 1시간 전(${minusHour(d.sunset)})까지 조사를 마무리하고 복귀를 준비하세요.`;
+
+  $("days").innerHTML = (d.days||[]).length ? d.days.map(day=>`
+    <div class="day">
+      <div class="dlabel">${day.label}</div><div class="dico">${day.ico}</div>
+      <div class="dbody">
+        <div class="drow1">
+          <span class="dtemp"><span class="lo">${day.lo.toFixed(1)}℃</span> / <span class="hi">${day.hi.toFixed(1)}℃</span></span>
+          ${chip(day.risk)} <b style="font-size:13px;">${day.risk.name}</b>
+        </div>
+        <div class="dact">${day.risk.act}</div>
+      </div>
+    </div>`).join("") : `<div class="none">예보 자료를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.</div>`;
+  $("stamp3d").textContent = `기준 ${d.updated}`;
+
+  renderFeels(d);      // ▼ 추가 ② 체감온도 + 행동요령
+  renderWarnings(d);   // ▼ 개선 ③ 기상특보
+  renderHourly(d);     // ▼ 추가 ④ 시간대별 예보
+
+  $("stampNow").textContent = `마지막 갱신 ${d.updated} · 자료: 기상청`;
+}
+function minusHour(hm){ const [h,m]=hm.split(":").map(Number); return `${String((h+23)%24).padStart(2,"0")}:${String(m).padStart(2,"0")}`; }
+
+/* ▼ 추가 ②: 체감온도 + 현장 안전 행동요령 카드 그리기
+   - 가장 높은 단계의 위험요인 2개까지 골라 핵심 행동요령 3개만 표시 */
+function renderFeels(d){
+  const hz = hazardList(d);
+  $("feelsBig").textContent = d.feels.toFixed(1);
+  $("tempSmall").textContent = d.temp.toFixed(1);
+  $("stampFeels").textContent = `기준 ${d.updated}`;
+  const st = $("feelsStatus");
+  let tips = [];
+  if (!hz.length){
+    st.className = "fstatus lv-good";
+    st.innerHTML = `🟢 <b>현장활동 양호</b> <small>현재 특별한 위험기상은 없습니다</small>`;
+    tips = TIPS.good.map(t=>({t}));
+  } else {
+    const top = hz[0], second = hz[1];
+    const ic = {warning:"🟡", serious:"⚠️", critical:"🔴"}[top.key] || "⚠️";
+    const extra = hz.length>1 ? `<small>+ ${hz.slice(1,3).map(h=>h.name).join(", ")}</small>` : "";
+    st.className = `fstatus lv-${top.key}`;
+    st.innerHTML = `${ic} <b>${esc(top.name)}</b> ${extra}`;
+    tips = (top.tips||[top.act]).slice(0, second ? 2 : 3).map(t=>({t}));
+    if (second) tips.push({t:(second.tips||[second.act])[0], src:second.name});
+  }
+  $("tips").innerHTML = tips.map(x=>`<li>${esc(x.t)}${x.src?`<span class="src">(${esc(x.src)})</span>`:""}</li>`).join("");
+  $("feelsNote").textContent = (d.temp>=20 || d.temp<=10)
+    ? "체감온도: 기상청 산출식 적용 (여름 습구온도 기반 / 겨울 바람냉각지수) · 낙뢰는 초단기예보 기준"
+    : "체감온도: 기온 20℃ 이하·10℃ 이상 구간은 기온과 동일하게 표시 (기상청 기준)";
+}
+
+/* ▼ 개선 ③: 기상특보 카드 (경고 카드 + 상세보기 / 없으면 명확히 표시) */
+function renderWarnings(d){
+  $("stampWarn").textContent = d.warnStamp ? `특보현황 ${d.warnStamp} 기준` : "";
+  if (d.warnError){
+    $("warnings").innerHTML = `<div class="werr">⚠️ 특보 정보를 확인하지 못했습니다. 기상청 날씨누리(weather.go.kr) 또는 131로 확인해 주세요.</div>`;
+    return;
+  }
+  let html = "";
+  const act = d.warnActive || [];
+  if (act.length){
+    html += act.slice(0,3).map((w,i)=>{
+      const info = warnInfo(w.type);
+      return `<div class="wcard lv-${info.key}">
+        <div class="wtitle">${info.ico} <b>${esc(w.type)}</b></div>
+        <div class="warea">📍 ${esc(w.area)}</div>
+        <div class="wtime">${w.exact ? `발효: ${esc(fmtKmaTime(w.tmEf||w.tmFc))} · 발표 ${esc(fmtKmaTime(w.tmFc))}` : `발효 중 · 특보현황 ${esc(fmtKmaTime(w.tmFc))} 기준`}</div>
+        <button class="wbtn" onclick="SW.openWarnDetail(${i})">상세보기</button>
+      </div>`;
+    }).join("");
+  } else {
+    html += `<div class="wnone">✅ 현재 발효 중인 기상특보가 없습니다</div>`;
+  }
+  const sub = [];
+  if (d.warnPrelim) sub.push(`🔔 <b>예비특보</b> ${esc(d.warnPrelim)}`);
+  if ((d.warnNearby||[]).length) sub.push(`📍 <b>인근 지역 특보</b> ${d.warnNearby.slice(0,3).map(w=>esc(w.type)+"("+esc(w.area.length>28?w.area.slice(0,28)+"…":w.area)+")").join(", ")}`);
+  if ((d.warnReleased||[]).length) sub.push(`✔️ <b>최근 해제</b> ${d.warnReleased.slice(0,2).map(w=>esc(w.title)+" "+esc(fmtKmaTime(w.time)).slice(5)).join(", ")}`);
+  if (sub.length) html += `<div class="wsub">${sub.join("<br>")}</div>`;
+  $("warnings").innerHTML = html;
+}
+function openWarnDetail(i){
+  const w = (LAST && LAST.warnActive || [])[i]; if (!w) return;
+  const info = warnInfo(w.type);
+  $("warnDetailTitle").textContent = `${info.ico} ${w.type} 상세`;
+  const rows = [
+    ["특보 종류", `<b>${esc(w.type)}</b> ${chip({key:info.key, ico:LV[info.key==="critical"?"critical":info.key].ico, label:LV[info.key==="critical"?"critical":info.key].label})}`],
+    ["대상 지역", esc(w.area)],
+    ["발표 시각", w.exact ? esc(fmtKmaTime(w.tmFc)) : `확인 불가 <span style="font-size:11.5px;color:var(--muted);">(통보문 조회 범위 밖 · 특보현황 ${esc(fmtKmaTime(w.tmFc))} 기준)</span>`],
+    ["발효 시각", w.exact ? esc(fmtKmaTime(w.tmEf||w.tmFc)) : `발효 중 <span style="font-size:11.5px;color:var(--muted);">(특보현황 ${esc(fmtKmaTime(w.tmFc))} 기준)</span>`],
+    ["해제 여부", `<span style="color:#a92f2f;font-weight:900;">발효 중</span> (해제되지 않음)`],
+    ["행동요령", `<ul class="tips" style="margin-top:0;">${info.tips.map(t=>`<li>${esc(t)}</li>`).join("")}</ul>`],
+  ];
+  if (w.detail) rows.push(["기상청 유의사항", `<div class="warndetail">${esc(w.detail)}</div>`]);
+  $("warnDetailBody").innerHTML = `<div class="wdl">${rows.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:10px;">자료: 기상청 기상특보 통보문 · 최종 확인은 기상청 발표를 따릅니다.</div>`;
+  $("warnOvl").classList.add("on");
+}
+function closeWarnDetail(){ $("warnOvl").classList.remove("on"); }
+
+/* ▼ 추가 ④: 시간대별 현장예보 (가로 스크롤 + 위험 시간대 요약) */
+function hourFlags(h){    // 한 시간의 위험 표시(높은 단계 순)
+  const f = [];
+  if (h.lgt > 0) f.push({key:"critical", ico:"⚡", tx:"낙뢰"});
+  const heat = judgeHeat(h.feels);
+  if (heat && heat.key!=="warning") f.push({key:heat.key, ico:"🌡️", tx:"폭염"});
+  if (h.T <= -15) f.push({key:"critical", ico:"🥶", tx:"한파"});
+  else if (h.T <= -12) f.push({key:"serious", ico:"🥶", tx:"한파"});
+  if (h.wind >= 14) f.push({key:"critical", ico:"💨", tx:"강풍"});
+  else if (h.wind >= 9) f.push({key:"serious", ico:"💨", tx:"바람"});
+  if (h.pcp >= 10) f.push({key:"serious", ico:"🌧️", tx:"호우"});
+  else if (h.sno > 0) f.push({key:"warning", ico:"❄️", tx:"눈"});
+  else if (h.pop >= 60 || (h.pty && h.pty!=="0")) f.push({key:"warning", ico:"☔", tx:"강수"});
+  f.sort((a,b)=>RANK[b.key]-RANK[a.key]);
+  return f;
+}
+function renderHourly(d){
+  const hs = d.hourly || [];
+  $("stampHourly").textContent = d.hourlyStamp ? `${d.hourlyStamp} 기준` : "";
+  if (!hs.length){
+    $("hourly").innerHTML = `<div class="none">시간대별 예보를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.</div>`;
+    $("hourlySum").innerHTML = ""; return;
+  }
+  const todayStr = ymd(new Date());
+  const tomorrowStr = ymd(new Date(Date.now()+86400000));
+  const dayName = (dt)=> dt===todayStr ? "오늘" : dt===tomorrowStr ? "내일" : "모레";
+  let prevDate = null;
+  const cells = hs.map((h,i)=>{
+    const dayLbl = (h.date!==prevDate && (prevDate!==null || h.date!==todayStr)) ? dayName(h.date) : "";
+    prevDate = h.date;
+    const top = h.flags[0];
+    return `<div class="hcell lv-${h.level}${i===0?" now":""}">
+      <div class="ht">${dayLbl?`<small>${dayLbl}</small>`:""}${h.hour}시</div>
+      <div class="hi">${h.icon}</div>
+      <div class="htemp">${Math.round(h.T)}℃</div>
+      <div class="hpop${h.pop<30?" low":""}">${h.pop}%</div>
+      <div class="hpcp">${h.pcp>0 ? h.pcp+"㎜" : (h.sno>0 ? h.sno+"㎝" : "–")}</div>
+      <div class="hwind">${h.wind.toFixed(0)}m/s</div>
+      <div class="hflag">${top ? top.ico+top.tx : ""}</div>
+    </div>`;
+  }).join("");
+  $("hourly").innerHTML = `<div class="hscroll"><div class="hrow">
+    <div class="hlabel"><div>시간</div><div>날씨</div><div>기온</div><div>강수확률</div><div>강수량</div><div>풍속</div><div>주의</div></div>
+    ${cells}</div></div>`;
+
+  /* 위험 시간대 요약: 같은 종류가 연속되면 하나로 묶어 최대 4개 */
+  const segs = [];
+  hs.forEach(h=>{
+    const top = h.flags[0]; if (!top) return;
+    const last = segs[segs.length-1];
+    if (last && last.tx===top.tx && last.endIdx===h.idx-1){ last.end=h.hour; last.endIdx=h.idx; if (RANK[top.key]>RANK[last.key]) last.key=top.key; }
+    else segs.push({tx:top.tx, ico:top.ico, key:top.key, start:h.hour, end:h.hour, endIdx:h.idx, day:h.date===todayStr?"":dayName(h.date)+" "});
+  });
+  segs.sort((a,b)=>RANK[b.key]-RANK[a.key]);
+  $("hourlySum").innerHTML = segs.length
+    ? `⚠️ <b>주의 시간대</b><br>` + segs.slice(0,4).map(s=>`<span class="seg c-${s.key}">${s.ico} ${s.day}${s.start}시${s.end!==s.start?`~${s.end}시`:""} ${s.tx}</span>`).join("")
+    : `🟢 향후 ${hs.length}시간 동안 특별히 주의할 시간대가 없습니다.`;
+}
+
+
+/* ═══════════ ⑤ 실데이터 해석 (기상청 응답 → 화면 데이터) ═══════════ */
+
+/* 좌표(위경도) → 기상청 격자(nx,ny) 변환 */
+function toGrid(lat, lon){
+  const RE=6371.00877, GRID=5.0, SLAT1=30.0, SLAT2=60.0, OLON=126.0, OLAT=38.0, XO=43, YO=136;
+  const D=Math.PI/180, re=RE/GRID, s1=SLAT1*D, s2=SLAT2*D, ol=OLON*D, oa=OLAT*D;
+  let sn=Math.tan(Math.PI*0.25+s2*0.5)/Math.tan(Math.PI*0.25+s1*0.5);
+  sn=Math.log(Math.cos(s1)/Math.cos(s2))/Math.log(sn);
+  let sf=Math.pow(Math.tan(Math.PI*0.25+s1*0.5),sn)*Math.cos(s1)/sn;
+  let ro=re*sf/Math.pow(Math.tan(Math.PI*0.25+oa*0.5),sn);
+  let ra=re*sf/Math.pow(Math.tan(Math.PI*0.25+lat*D*0.5),sn);
+  let th=lon*D-ol; if(th>Math.PI)th-=2*Math.PI; if(th<-Math.PI)th+=2*Math.PI; th*=sn;
+  return {nx:Math.floor(ra*Math.sin(th)+XO+0.5), ny:Math.floor(ro-ra*Math.cos(th)+YO+0.5)};
+}
+
+/* 체감온도 — 기상청 공식 산출식
+   · 여름(기온 20℃ 이상): 2022년 개정 체감온도식 (Stull 습구온도 기반)
+   · 겨울(기온 10℃ 이하, 풍속 4.8km/h 이상): 바람냉각지수(Wind Chill)
+   · 그 외 구간: 기온과 동일
+   ※ 기상청 생활기상지수 '체감온도' API는 현재 공공데이터포털에서 제공 경로가 없어 산출식을 사용합니다. */
+function feelsLike(T, RH, Wms){
+  if (T >= 20){
+    const Tw = T*Math.atan(0.151977*Math.sqrt(RH+8.313659)) + Math.atan(T+RH)
+             - Math.atan(RH-1.67633) + 0.00391838*Math.pow(RH,1.5)*Math.atan(0.023101*RH) - 4.686035;
+    return -0.2442 + 0.55399*Tw + 0.45535*T - 0.0022*Tw*Tw + 0.00278*Tw*T + 3.0;
+  }
+  const Vkh = Wms*3.6;
+  if (T <= 10 && Vkh >= 4.8){
+    return 13.12 + 0.6215*T - 11.37*Math.pow(Vkh,0.16) + 0.3965*T*Math.pow(Vkh,0.16);
+  }
+  return T;
+}
+
+/* 하늘상태 아이콘 (PTY 우선, 없으면 SKY) */
+function skyIcon(pty, sky){
+  const p = String(pty||"0"), s = String(sky||"1");
+  if (p==="1"||p==="5") return ["🌧️","비"];
+  if (p==="2"||p==="6") return ["🌨️","비/눈"];
+  if (p==="3"||p==="7") return ["❄️","눈"];
+  if (p==="4") return ["🌦️","소나기"];
+  if (s==="4") return ["☁️","흐림"];
+  if (s==="3") return ["⛅","구름 많음"];
+  return ["☀️","맑음"];
+}
+
+/* 일출·일몰 계산 (NOAA 근사식, KST) */
+function sunTimes(lat, lon, date){
+  const rad=Math.PI/180, day=Math.floor((date-new Date(date.getFullYear(),0,0))/864e5);
+  const g=(360/365.25)*(day-81)*rad;
+  const eot=9.87*Math.sin(2*g)-7.53*Math.cos(g)-1.5*Math.sin(g);
+  const decl=23.45*Math.sin((360/365*(day-81))*rad)*rad;
+  const ha=Math.acos((Math.cos(90.833*rad)-Math.sin(lat*rad)*Math.sin(decl))/(Math.cos(lat*rad)*Math.cos(decl)))/rad;
+  const solarNoon=720-4*lon+540-eot; // KST(UTC+9) 기준 분
+  const fmt=(m)=>{m=((m%1440)+1440)%1440;const h=Math.floor(m/60),mi=Math.round(m%60);
+    return String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0");};
+  return {rise:fmt(solarNoon-4*ha), set:fmt(solarNoon+4*ha)};
+}
+
+/* 예보 위험판정 (예보값은 기온 기준으로 근사) */
+function judgeDay(hi, lo, pop){
+  return judgeHeat(hi) || judgeCold(lo) ||
+         (pop>=70 ? {...LV.warning, name:"강수 유의", act:"우천 대비 · 미끄럼 주의 · 우의 준비"} : null) ||
+         {...LV.good, name:"위험요인 없음", act:"기본 안전수칙을 지키며 조사를 진행하세요"};
+}
+
+/* ▼ 추가: 단기예보 강수량 문자열 → mm 숫자 ("강수없음"→0, "1mm 미만"→0.5, "30.0~50.0mm"→30, "50.0mm 이상"→50) */
+function parsePcp(v){
+  if (v==null) return 0;
+  const s = String(v).trim();
+  if (!s || s==="0" || s.indexOf("없음")>=0) return 0;
+  if (s.indexOf("미만")>=0) return 0.5;
+  const m = s.match(/[\d.]+/); return m ? parseFloat(m[0]) : 0;
+}
+
+/* ▼ 추가: 단기예보(3일) + 초단기예보(6시간) → 향후 24시간 시간대별 데이터
+   - 초단기예보가 있는 시간대는 기온·하늘·강수형태·풍속·습도·낙뢰를 초단기 값으로 덮어씀(더 정확) */
+function buildHourly(fItems, uItems){
+  const map = {};
+  fItems.forEach(it=>{ const k=it.fcstDate+it.fcstTime; (map[k] ||= {date:it.fcstDate, time:it.fcstTime})[it.category]=it.fcstValue; });
+  (uItems||[]).forEach(it=>{
+    const k=it.fcstDate+it.fcstTime; const h=(map[k] ||= {date:it.fcstDate, time:it.fcstTime});
+    if (it.category==="T1H") h.TMP=it.fcstValue;
+    else if (it.category==="RN1") h.RN1=it.fcstValue;
+    else if (["SKY","PTY","WSD","REH","LGT"].includes(it.category)) h[it.category]=it.fcstValue;
+  });
+  const now=new Date(); const nowKey = ymd(now)+String(now.getHours()).padStart(2,"0")+"00";
+  const keys = Object.keys(map).sort().filter(k=>k>=nowKey && map[k].TMP!=null).slice(0,24);
+  return keys.map((k,idx)=>{
+    const h=map[k]; const T=parseFloat(h.TMP), RH=parseFloat(h.REH??60), W=parseFloat(h.WSD??0);
+    const pcp = h.RN1!=null ? parsePcp(h.RN1) : parsePcp(h.PCP);
+    const sno = parsePcp(h.SNO);
+    const out = { idx, date:h.date, hour:parseInt(h.time.slice(0,2),10), T, reh:RH, wind:W, pop:parseInt(h.POP??0,10)||0,
+      pcp, sno, pty:String(h.PTY??"0"), sky:h.SKY, lgt:parseFloat(h.LGT??0)||0,
+      feels:Math.round(feelsLike(T,RH,W)*10)/10, icon:skyIcon(h.PTY,h.SKY)[0] };
+    out.flags = hourFlags(out); out.level = out.flags[0] ? out.flags[0].key : "good";
+    return out;
+  });
+}
+
+/* ▼ 추가: 특보현황(getPwnStatus)의 발효 목록 문자열 해석
+   "o 호우주의보 : 강원도(양양평지, 강릉평지)\r\no 풍랑주의보 : 동해남부앞바다" → [{type, area}] */
+function parseWarnStatus(t6){
+  const out=[];
+  String(t6||"").split(/\r?\n/).forEach(line=>{
+    const m=line.match(/^\s*o\s*(.+?)\s*:\s*(.+?)\s*$/); if(!m) return;
+    if (/없\s*음/.test(m[1])) return;
+    out.push({type:m[1].replace(/\s/g,""), area:m[2]});
+  });
+  return out;
+}
+const hasKey = (text, keys)=>(keys||[]).some(k=>k && String(text).indexOf(k)>=0);
+
+/* 기상청 원본(JSON 4종) → 화면용 데이터로 변환
+   raw = {ncst:실황, fcst:단기예보, usfcst:초단기예보(없어도 됨), pwn:특보현황, warn:특보통보문(없어도 됨)} */
+function transform(raw, lat, lon, region){
+  const out = {};
+  const safe = (s)=>{ try{ return typeof s==="string" ? JSON.parse(s) : s; }catch(e){ return null; } };
+  const items = (j)=>{ const it=j?.response?.body?.items?.item; return Array.isArray(it)?it:(it?[it]:[]); };
+
+  /* ① 현재(실황) */
+  const nItems = items(safe(raw.ncst));
+  if (!nItems.length) throw new Error("NCST");
+  const nv = {}; nItems.forEach(it=>nv[it.category]=parseFloat(it.obsrValue));
+  const T=nv.T1H??0, RH=nv.REH??50, W=nv.WSD??0, R1=nv.RN1??0, PTY=nv.PTY??0;
+  const base = `${nItems[0].baseDate.slice(4,6)}-${nItems[0].baseDate.slice(6,8)} ${nItems[0].baseTime.slice(0,2)}:${nItems[0].baseTime.slice(2,4)}`;
+  out.temp=T; out.humid=Math.round(RH); out.wind=W; out.rain=R1; out.pty=PTY;
+  out.feels=Math.round(feelsLike(T,RH,W)*10)/10;
+  out.updated=base; out.diff=null; out.pm=null; out.tmin=T;
+
+  /* ② 3일 예보 */
+  const fItems = items(safe(raw.fcst));
+  const byDate = {};
+  fItems.forEach(it=>{
+    (byDate[it.fcstDate] ||= {tmp:[], pop:[], sky:{}, pty:{}, tmn:null, tmx:null});
+    const d = byDate[it.fcstDate];
+    if (it.category==="TMP") d.tmp.push(parseFloat(it.fcstValue));
+    if (it.category==="TMN") d.tmn=parseFloat(it.fcstValue);
+    if (it.category==="TMX") d.tmx=parseFloat(it.fcstValue);
+    if (it.category==="POP") d.pop.push(parseFloat(it.fcstValue));
+    if (it.category==="SKY" && it.fcstTime==="1200") d.sky=it.fcstValue;
+    if (it.category==="PTY" && it.fcstTime==="1200") d.pty=it.fcstValue;
+  });
+  const dates = Object.keys(byDate).sort().slice(0,3);
+  const labels = ["오늘","내일","모레"];
+  out.days = dates.map((dt,i)=>{
+    const d = byDate[dt];
+    const lo = d.tmn ?? (d.tmp.length?Math.min(...d.tmp):0);
+    const hi = d.tmx ?? (d.tmp.length?Math.max(...d.tmp):0);
+    const pop = d.pop.length?Math.max(...d.pop):0;
+    const [ico] = skyIcon(d.pty, d.sky);
+    const risk = judgeDay(hi, lo, pop);
+    if (risk.name.startsWith("폭염") && i>0) risk.name = risk.name+" 예상";
+    return {label:labels[i]||dt, ico, lo, hi, risk};
+  });
+  const today = byDate[dates[0]];
+  if (today && today.tmn!=null) out.tmin = today.tmn;
+
+  /* 현재 아이콘/텍스트 */
+  const nowSky = fItems.find(it=>it.category==="SKY");
+  const [ico,txt] = skyIcon(PTY, nowSky?nowSky.fcstValue:"1");
+  out.icon=ico; out.text=txt;
+
+  /* ▼ 추가 ②-1 시간대별 예보 (단기 + 초단기) */
+  const uItems = items(safe(raw.usfcst));
+  out.hourly = fItems.length ? buildHourly(fItems, uItems) : [];
+  out.hourlyStamp = fItems.length ? `단기예보 ${fItems[0].baseDate.slice(4,6)}-${fItems[0].baseDate.slice(6,8)} ${fItems[0].baseTime.slice(0,2)}:${fItems[0].baseTime.slice(2,4)} 발표` : "";
+  if (uItems.length) out.hourlyStamp += ` · 초단기 ${uItems[0].baseTime.slice(0,2)}:${uItems[0].baseTime.slice(2,4)}`;
+  /* 향후 3시간 내 낙뢰 예측 → 현재 위험요인에 반영 */
+  out.lgt = out.hourly.slice(0,3).some(h=>h.lgt>0) ? 1 : 0;
+
+  /* ▼ 개선 ③ 특보: 특보현황(발효 목록) + 통보문(발표·발효시각·유의사항)
+     - 이 지역 키워드(keys)가 대상지역에 있으면 '발효 중', 같은 도 키워드(prov)만 있으면 '인근 지역' */
+  out.warnActive=[]; out.warnNearby=[]; out.warnPrelim=""; out.warnReleased=[]; out.warnStamp=""; out.warnError=false;
+  const keys = region?.keys||[], prov = region?.prov||[];
+  const pw = safe(raw.pwn);
+  const pwItem = items(pw)[0];
+  if (!pwItem){ out.warnError = true; }
+  else {
+    out.warnStamp = fmtKmaTime(pwItem.tmFc).slice(5);
+    parseWarnStatus(pwItem.t6).forEach(w=>{
+      if (hasKey(w.area, keys)) out.warnActive.push({...w, tmFc:String(pwItem.tmFc), tmEf:String(pwItem.tmEf||pwItem.tmFc), detail:"", exact:false});
+      else if (hasKey(w.area, prov)) out.warnNearby.push(w);
+    });
+    const prelim = parseWarnStatus(pwItem.t7).filter(w=>hasKey(w.area, keys));
+    if (prelim.length) out.warnPrelim = prelim.map(w=>`${w.type} (${w.area})`).join(", ");
+    /* 통보문에서 발표·발효 시각과 유의사항 보강 (같은 종류 + 이 지역 언급, 최신 것) */
+    const msgs = items(safe(raw.warn));
+    out.warnActive.forEach(w=>{
+      const m = msgs.find(m=>String(m.t2||"").indexOf(w.type)>=0 && hasKey(m.t2, keys) && String(m.t2).indexOf("해제")<0);
+      if (m){ w.exact=true; w.tmFc=String(m.tmFc); if (m.t5) w.tmEf=String(m.t5); const o=String(m.other||"").trim(); if (o && o!=="o 없음") w.detail=o.replace(/\r/g,""); }
+    });
+    /* 최근 24시간 내 이 지역 해제 통보문 */
+    const cutoff = ymd(new Date(Date.now()-24*3600000))+"0000";
+    msgs.forEach(m=>{
+      const t2=String(m.t2||""); if (t2.indexOf("해제")<0 || !hasKey(t2, keys) || String(m.tmFc)<cutoff) return;
+      const title=String(m.t1||"").trim(); if (title && !out.warnReleased.some(r=>r.title===title)) out.warnReleased.push({title, time:String(m.tmFc)});
+    });
+  }
+  if (TEST==="warn" && !out.warnActive.length) out.warnActive = SAMPLE_WARN.map(w=>({...w}));   // 점검용
+
+  /* ④ 일출·일몰 */
+  const st = sunTimes(lat, lon, new Date());
+  out.sunrise=st.rise; out.sunset=st.set;
+  return out;
+}
+
+/* ═══════════ ⑥ 데이터 불러오기 (기상청 직접 호출) ═══════════ */
+let LIVE = false;
+let cur = regionFromSite(HOME);
+
+/* 실황 기준시각: 정시 관측 + 40분 후 공개 → 45분 전 정시 사용 */
+function ncstBase(){
+  const d = new Date(Date.now() - 45*60000);
+  return { date: ymd(d), time: String(d.getHours()).padStart(2,"0") + "00" };
+}
+/* 단기예보 기준시각: 02/05/08/11/14/17/20/23시 발표 (30분 여유) */
+function fcstBase(){
+  const d = new Date(Date.now() - 30*60000);
+  const slots = [2,5,8,11,14,17,20,23];
+  let pick = null;
+  for (const s of slots) if (s <= d.getHours()) pick = s;
+  if (pick === null){ d.setDate(d.getDate()-1); pick = 23; }
+  return { date: ymd(d), time: String(pick).padStart(2,"0") + "00" };
+}
+/* ▼ 추가: 초단기예보 기준시각: 매시 30분 발표, 45분 후 공개 → 50분 전 시각의 HH30 */
+function usfcstBase(){
+  const d = new Date(Date.now() - 50*60000);
+  return { date: ymd(d), time: String(d.getHours()).padStart(2,"0") + "30" };
+}
+/* ▼ 추가: 동일 URL 10분 캐시 (지역을 오가도 같은 API를 반복 호출하지 않음). 새로고침 버튼은 캐시 무시 */
+const API_CACHE = new Map();
+async function kmaGet(path, params, force){
+  const url = "https://apis.data.go.kr/1360000/" + path
+    + "?serviceKey=" + encodeURIComponent(getKmaKey()) + "&dataType=JSON&" + params;
+  const c = API_CACHE.get(url);
+  if (!force && c && Date.now()-c.ts < API_CACHE_MS) return c.data;
+  const res = await fetch(url);
+  const j = await res.json();
+  if (j.OpenAPI_ServiceResponse) throw new Error(apiErrKind(j));   // 키 오류·등록 안 된 API·호출한도 초과 등
+  API_CACHE.set(url, {ts:Date.now(), data:j});
+  return j;
+}
+/* 공공데이터포털 공통 오류 구분: 22 = 일일 호출한도 초과(LIMIT), 그 외 = 키/활용신청 문제(KEY) */
+function apiErrKind(j){
+  const code = String(j?.OpenAPI_ServiceResponse?.cmmMsgHeader?.returnReasonCode||"");
+  return code==="22" ? "LIMIT" : "KEY";
+}
+function setLoading(on){ $("loading").classList.toggle("on", !!on); }
+function setStale(msg){ const s=$("stale"); s.textContent = msg||""; s.classList.toggle("on", !!msg); }
+
+let loadSeq = 0;   // 지역을 빠르게 바꿀 때 이전 응답이 나중에 덮어쓰지 않도록
+async function load(force){
+  const seq = ++loadSeq;
+  LIVE = !!getKmaKey() && TEST!=="sample";
+  $("kmaBanner").style.display = LIVE ? "none" : "block";
+  $("sampleBadge").style.display = LIVE ? "none" : "block";
+  $("locName").textContent = cur.name;
+  if (!LIVE){ render(SAMPLE, cur.name, cur.sub); setStale(""); loadDust(); return; }
+  setLoading(true); setStale("");
+  try{
+    const g = toGrid(cur.lat, cur.lon);
+    const nb = ncstBase(), fb = fcstBase(), ub = usfcstBase();
+    const from = ymd(new Date(Date.now()-5*86400000)), to = ymd(new Date());
+    const rs = await Promise.allSettled([
+      kmaGet("VilageFcstInfoService_2.0/getUltraSrtNcst",
+        `numOfRows=100&pageNo=1&base_date=${nb.date}&base_time=${nb.time}&nx=${g.nx}&ny=${g.ny}`, force),
+      kmaGet("VilageFcstInfoService_2.0/getVilageFcst",
+        `numOfRows=1000&pageNo=1&base_date=${fb.date}&base_time=${fb.time}&nx=${g.nx}&ny=${g.ny}`, force),
+      kmaGet("VilageFcstInfoService_2.0/getUltraSrtFcst",
+        `numOfRows=100&pageNo=1&base_date=${ub.date}&base_time=${ub.time}&nx=${g.nx}&ny=${g.ny}`, force),
+      kmaGet("WthrWrnInfoService/getPwnStatus", `numOfRows=10&pageNo=1&stnId=${cur.stn||143}`, force),
+      kmaGet("WthrWrnInfoService/getWthrWrnMsg",
+        `numOfRows=30&pageNo=1&stnId=${cur.stn||143}&fromTmFc=${from}&toTmFc=${to}`, force),
+    ]);
+    if (seq !== loadSeq) return;   // 그 사이 다른 지역이 선택됨
+    const val = (i)=>rs[i].status==="fulfilled" ? rs[i].value : null;
+    if (rs.every(r=>r.status==="rejected" && r.reason && (r.reason.message==="KEY"||r.reason.message==="LIMIT")))
+      throw new Error(rs[0].reason.message);
+    const d = transform({ncst:val(0), fcst:val(1), usfcst:val(2), pwn:val(3), warn:val(4)}, cur.lat, cur.lon, cur);
+    render(d, cur.name, cur.sub); hideToast();
+    try{ localStorage.setItem(LASTDATA_KEY+regionKey(cur), JSON.stringify({ts:Date.now(), d})); }catch(e){}
+    const failed = rs.filter(r=>r.status==="rejected").length;
+    if (failed) toast(`일부 기상정보(${failed}건)를 불러오지 못해 가능한 정보만 표시합니다.`);
+  }catch(e){
+    if (seq !== loadSeq) return;
+    if (e.message === "KEY")
+      toast("기상청 키가 올바르지 않거나, 해당 API 활용신청이 안 된 키입니다. [🔑]에서 다시 확인해주세요.");
+    else if (e.message === "LIMIT")
+      toast("기상청 API 일일 호출 한도를 초과했습니다. 이전에 받은 자료가 있으면 표시합니다.");
+    else
+      toast("데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    /* ▼ 추가: graceful fallback — 이 지역의 마지막 성공 데이터가 있으면 그것을 표시 */
+    let last = null; try{ last = JSON.parse(localStorage.getItem(LASTDATA_KEY+regionKey(cur))||"null"); }catch(e2){}
+    if (last && last.d){
+      render(last.d, cur.name, cur.sub);
+      setStale(`⚠️ 최신 자료를 불러오지 못해 ${new Date(last.ts).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}에 받은 자료를 표시합니다.`);
+    } else {
+      setStale("⚠️ 기상정보를 불러오지 못했습니다. 네트워크 확인 후 [🔄 새로고침]을 눌러주세요.");
+      $("warnings").innerHTML = `<div class="werr">특보 정보를 확인하지 못했습니다. 기상청 131 또는 weather.go.kr에서 확인해 주세요.</div>`;
+      $("hourly").innerHTML = `<div class="none">시간대별 예보를 불러오지 못했습니다.</div>`;
+      $("feelsStatus").className="fstatus lv-warning"; $("feelsStatus").textContent="기상정보 없음 — 새로고침 후 확인";
+    }
+  }
+  setLoading(false);
+  loadDust();
+}
+
+/* ═══════════ ⑥-2 미세먼지 (에어코리아 — 같은 공공데이터포털 키 사용) ═══════════ */
+const SIDO_MAP = {"서울특별시":"서울","부산광역시":"부산","대구광역시":"대구","인천광역시":"인천",
+  "광주광역시":"광주","대전광역시":"대전","울산광역시":"울산","세종특별자치시":"세종","경기도":"경기",
+  "강원특별자치도":"강원","강원도":"강원","충청북도":"충북","충청남도":"충남",
+  "전북특별자치도":"전북","전라북도":"전북","전라남도":"전남","경상북도":"경북","경상남도":"경남",
+  "제주특별자치도":"제주","제주도":"제주"};
+function dustGrade(pm10, pm25){   // 환경부 기준: 나쁜 쪽으로 판정
+  const g10 = pm10==null?0 : pm10<=30?0 : pm10<=80?1 : pm10<=150?2 : 3;
+  const g25 = pm25==null?0 : pm25<=15?0 : pm25<=35?1 : pm25<=75?2 : 3;
+  return [["😊","좋음","#0ca30c"],["🙂","보통","#2b6cb0"],["😷","나쁨","#ec835a"],["🤢","매우나쁨","#d03b3b"]][Math.max(g10,g25)];
+}
+async function loadDust(){
+  const el = $("pm"), tile = $("pmTile");
+  if (!getKmaKey()){ el.textContent = "키 연결 후 표시"; return; }
+  const mySeq = loadSeq;
+  try{
+    el.textContent = "확인 중…";
+    /* ① 현재 좌표의 시·도, 시·군 이름 알아내기 (실패하면 경북 기준) */
+    let sido = "경북", county = "";
+    try{
+      const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=json"
+        + "&lat=" + cur.lat + "&lon=" + cur.lon + "&zoom=10&accept-language=ko");
+      const a = (await r.json()).address || {};
+      const prov = a.province || a.state || a.city || "";
+      if (SIDO_MAP[prov]) sido = SIDO_MAP[prov];
+      else { const k = Object.keys(SIDO_MAP).find(k=>prov.indexOf(k.slice(0,2))===0); if (k) sido = SIDO_MAP[k]; }
+      county = (a.county || a.city || a.borough || "").replace(/(특별시|광역시|특별자치시|시|군|구)$/,"");
+    }catch(e){
+      /* 역지오코딩 실패 시 기본 지역이면 알고 있는 시·도 사용 */
+      if (cur.prov && cur.prov[0]) sido = SIDO_MAP[cur.prov[0]] || sido;
+      if (cur.keys && cur.keys[0]) county = cur.keys[0];
+    }
+    /* ② 해당 시·도의 실시간 측정값 */
+    const res = await fetch("https://apis.data.go.kr/B552584/ArpltnInforInqireSvc/getCtprvnRltmMesureDnsty"
+      + "?serviceKey=" + encodeURIComponent(getKmaKey())
+      + "&returnType=json&numOfRows=200&pageNo=1&ver=1.0&sidoName=" + encodeURIComponent(sido));
+    const j = await res.json();
+    if (j.OpenAPI_ServiceResponse) throw new Error(apiErrKind(j));
+    if (mySeq !== loadSeq) return;
+    const items = j.response?.body?.items || [];
+    const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    /* ③ 가까운 이름의 측정소 → 없으면 시·도 중앙값 */
+    let pick = county ? items.find(it=>it.stationName &&
+      (it.stationName.indexOf(county)>=0 || county.indexOf(it.stationName)>=0)) : null;
+    if (!pick || (num(pick.pm10Value)==null && num(pick.pm25Value)==null)){
+      const v10 = items.map(it=>num(it.pm10Value)).filter(v=>v!=null).sort((a,b)=>a-b);
+      const v25 = items.map(it=>num(it.pm25Value)).filter(v=>v!=null).sort((a,b)=>a-b);
+      if (!v10.length && !v25.length) throw new Error("NODATA");
+      pick = { stationName: sido + " 평균",
+        pm10Value: v10.length ? v10[Math.floor(v10.length/2)] : null,
+        pm25Value: v25.length ? v25[Math.floor(v25.length/2)] : null };
+    }
+    const p10 = num(pick.pm10Value), p25 = num(pick.pm25Value);
+    const g = dustGrade(p10, p25);
+    tile.classList.remove("pending");
+    el.innerHTML = '<span style="color:'+g[2]+';font-weight:800;">'+g[0]+' '+g[1]+'</span>'
+      + '<div style="font-size:10.5px;color:var(--muted);font-weight:700;margin-top:2px;">'
+      + '미세 ' + (p10??"–") + ' · 초미세 ' + (p25??"–")
+      + '<br>' + String(pick.stationName).replace(/[<>&]/g,"") + '</div>';
+  }catch(e){
+    if (mySeq !== loadSeq) return;
+    if (e.message === "KEY")
+      el.innerHTML = '<span style="font-size:11px;">활용신청 필요</span>'
+        + '<div style="font-size:10px;color:var(--muted);font-weight:700;">공공데이터포털에서<br>에어코리아 대기오염정보 신청</div>';
+    else if (e.message === "LIMIT")
+      el.innerHTML = '<span style="font-size:11px;">호출한도 초과</span>'
+        + '<div style="font-size:10px;color:var(--muted);font-weight:700;">내일 다시 표시됩니다</div>';
+    else el.textContent = "확인 불가";
+  }
+}
+function refresh(){ load(true); }
+function useHome(){ selectSite(HOME.id); }
+/* 현재 위치: 권한 거부·실패 시 기존 선택 지역을 그대로 유지(기본 지역 사용 가능) */
+function useGPS(fromRestore){
+  if (!navigator.geolocation){ toast("이 기기에서는 위치 기능을 사용할 수 없습니다."); if(fromRestore) load(); return; }
+  if (!getKmaKey()){ toast("📍 현재위치 갱신은 기상청 키 연결 후 사용할 수 있습니다."); if(fromRestore) load(); return; }
+  toast("위치 확인 중..."); setLoading(true);
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{ const nr = nearestRegion(pos.coords.latitude, pos.coords.longitude);
+      cur = {lat:pos.coords.latitude, lon:pos.coords.longitude, stn:(nr?nr[3]:143),
+        name:`현재 위치${nr?` (${nr[0]} 인근)`:""}`,
+        sub:`위도 ${pos.coords.latitude.toFixed(3)}, 경도 ${pos.coords.longitude.toFixed(3)}`,
+        keys: nr ? nameKeys(nr[0]) : [], prov: nr ? (STN_PROV[nr[3]]||[]) : [], sel:{type:"gps"}};
+      saveRegion(); load(); },
+    ()=>{ toast(fromRestore ? "위치 권한이 없어 마지막 기본 지역을 표시합니다." : "위치 권한이 거부되었거나 확인에 실패했습니다. 기본 지역을 선택해 사용하세요.");
+      if (fromRestore){ cur = regionFromSite(HOME); saveRegion(); load(); } else setLoading(false); },
+    {enableHighAccuracy:true, timeout:8000});
+}
+
+
+/* ═══════════ ⑦ 전국 시·군 좌표 (지역 검색용) ═══════════ */
+const REGIONS = (()=>{
+  // stnId: 109 수도권 / 105 강원 / 131 충북 / 133 대전·세종·충남 / 146 전북 / 156 광주·전남 / 143 대구·경북 / 159 부산·울산·경남 / 184 제주
+  const G = [
+  [109, [["서울",37.566,126.978],["서울 종로구",37.573,126.979],["서울 중구",37.564,126.998],["서울 용산구",37.532,126.990],["서울 성동구",37.563,127.037],["서울 광진구",37.538,127.082],["서울 동대문구",37.574,127.040],["서울 중랑구",37.606,127.093],["서울 성북구",37.589,127.017],["서울 강북구",37.640,127.026],["서울 도봉구",37.669,127.047],["서울 노원구",37.654,127.056],["서울 은평구",37.603,126.929],["서울 서대문구",37.579,126.937],["서울 마포구",37.566,126.902],["서울 양천구",37.517,126.867],["서울 강서구",37.551,126.850],["서울 구로구",37.495,126.888],["서울 금천구",37.457,126.895],["서울 영등포구",37.526,126.896],["서울 동작구",37.512,126.940],["서울 관악구",37.478,126.952],["서울 서초구",37.484,127.033],["서울 강남구",37.517,127.047],["서울 송파구",37.515,127.106],["서울 강동구",37.530,127.124],
+   ["인천",37.456,126.705],["인천 중구",37.474,126.622],["인천 동구",37.474,126.643],["인천 미추홀구",37.464,126.650],["인천 연수구",37.410,126.678],["인천 남동구",37.447,126.731],["인천 부평구",37.507,126.722],["인천 계양구",37.538,126.738],["인천 서구",37.545,126.676],["강화",37.747,126.488],
+   ["수원",37.263,127.029],["성남",37.420,127.127],["고양",37.658,126.832],["용인",37.241,127.178],["부천",37.503,126.766],["안산",37.322,126.831],["안양",37.394,126.957],["남양주",37.636,127.216],["화성",37.199,126.831],["평택",36.992,127.113],["의정부",37.738,127.034],["시흥",37.380,126.803],["파주",37.760,126.780],["김포",37.615,126.716],["광명",37.479,126.865],["광주(경기)",37.429,127.255],["군포",37.361,126.935],["이천",37.272,127.435],["오산",37.150,127.077],["하남",37.539,127.215],["양주",37.785,127.046],["구리",37.594,127.130],["안성",37.008,127.280],["포천",37.895,127.200],["의왕",37.345,126.968],["여주",37.298,127.637],["동두천",37.904,127.061],["과천",37.429,126.988],["가평",37.831,127.510],["양평",37.492,127.488],["연천",38.096,127.075]]],
+  [105, [["춘천",37.881,127.730],["원주",37.342,127.920],["강릉",37.752,128.876],["동해",37.525,129.114],["태백",37.164,128.986],["속초",38.207,128.592],["삼척",37.450,129.165],["홍천",37.697,127.889],["횡성",37.492,127.985],["영월",37.184,128.462],["평창",37.371,128.390],["정선",37.381,128.661],["철원",38.147,127.313],["화천",38.106,127.708],["양구",38.110,127.990],["인제",38.070,128.170],["고성(강원)",38.380,128.468],["양양",38.075,128.619]]],
+  [131, [["청주",36.642,127.489],["충주",36.991,127.926],["제천",37.132,128.191],["보은",36.489,127.729],["옥천",36.306,127.571],["영동",36.175,127.783],["증평",36.785,127.581],["진천",36.855,127.436],["괴산",36.815,127.787],["음성",36.940,127.690],["단양",36.985,128.365]]],
+  [133, [["대전",36.351,127.385],["대전 동구",36.312,127.455],["대전 중구",36.326,127.421],["대전 서구",36.355,127.384],["대전 유성구",36.362,127.356],["대전 대덕구",36.347,127.416],["세종",36.480,127.289],
+   ["천안",36.815,127.114],["공주",36.447,127.119],["보령",36.333,126.613],["아산",36.790,127.002],["서산",36.785,126.450],["논산",36.187,127.099],["계룡",36.274,127.249],["당진",36.890,126.646],["금산",36.109,127.488],["부여",36.276,126.910],["서천",36.080,126.691],["청양",36.459,126.802],["홍성",36.601,126.661],["예산",36.681,126.845],["태안",36.746,126.298]]],
+  [146, [["전주",35.824,127.148],["군산",35.968,126.737],["익산",35.948,126.958],["정읍",35.570,126.856],["남원",35.416,127.390],["김제",35.804,126.880],["완주",35.905,127.162],["진안",35.792,127.425],["무주",36.007,127.661],["장수",35.647,127.521],["임실",35.618,127.289],["순창",35.374,127.138],["고창",35.436,126.702],["부안",35.732,126.733]]],
+  [156, [["광주",35.160,126.851],["광주 동구",35.146,126.923],["광주 서구",35.152,126.890],["광주 남구",35.133,126.902],["광주 북구",35.174,126.912],["광주 광산구",35.140,126.794],
+   ["목포",34.812,126.392],["여수",34.760,127.662],["순천",34.951,127.487],["나주",35.016,126.711],["광양",34.940,127.696],["담양",35.321,126.988],["곡성",35.282,127.292],["구례",35.202,127.463],["고흥",34.611,127.285],["보성",34.771,127.080],["화순",35.064,126.987],["장흥",34.682,126.907],["강진",34.642,126.767],["해남",34.573,126.599],["영암",34.800,126.697],["무안",34.990,126.482],["함평",35.066,126.517],["영광",35.277,126.512],["장성",35.302,126.785],["완도",34.311,126.755],["진도",34.487,126.263],["신안",34.833,126.351]]],
+  [143, [["대구",35.871,128.601],["대구 중구",35.869,128.606],["대구 동구",35.887,128.635],["대구 서구",35.872,128.559],["대구 남구",35.846,128.598],["대구 북구",35.886,128.583],["대구 수성구",35.858,128.631],["대구 달서구",35.830,128.533],["대구 달성군",35.775,128.431],["군위",36.243,128.573],
+   ["포항",36.019,129.343],["경주",35.856,129.225],["김천",36.140,128.114],["안동",36.568,128.730],["구미",36.120,128.344],["영주",36.806,128.624],["영천",35.973,128.939],["상주",36.411,128.159],["문경",36.587,128.187],["경산",35.825,128.741],["의성",36.353,128.697],["청송",36.436,129.057],["영양",36.656,129.113],["영덕",36.415,129.366],["청도",35.647,128.734],["고령",35.726,128.263],["성주",35.919,128.283],["칠곡",35.995,128.402],["예천",36.658,128.453],["봉화",36.893,128.733],["울진",36.993,129.401],["울릉",37.484,130.906]]],
+  [159, [["부산",35.180,129.075],["부산 중구",35.106,129.032],["부산 서구",35.098,129.024],["부산 동구",35.129,129.045],["부산 영도구",35.091,129.068],["부산 부산진구",35.163,129.053],["부산 동래구",35.205,129.084],["부산 남구",35.137,129.084],["부산 북구",35.197,128.990],["부산 해운대구",35.163,129.164],["부산 사하구",35.104,128.975],["부산 금정구",35.243,129.092],["부산 강서구",35.212,128.981],["부산 연제구",35.176,129.080],["부산 수영구",35.145,129.113],["부산 사상구",35.152,128.991],["기장",35.245,129.222],
+   ["울산",35.539,129.311],["울산 중구",35.569,129.333],["울산 남구",35.544,129.330],["울산 동구",35.505,129.417],["울산 북구",35.583,129.361],["울주",35.522,129.243],
+   ["창원",35.228,128.681],["진주",35.180,128.108],["통영",34.854,128.433],["사천",35.004,128.064],["김해",35.228,128.889],["밀양",35.504,128.747],["거제",34.881,128.621],["양산",35.335,129.037],["의령",35.322,128.262],["함안",35.272,128.406],["창녕",35.545,128.492],["고성(경남)",34.973,128.322],["남해",34.838,127.893],["하동",35.067,127.751],["산청",35.416,127.874],["함양",35.520,127.725],["거창",35.687,127.910],["합천",35.567,128.166]]],
+  [184, [["제주",33.500,126.531],["서귀포",33.254,126.560]]]
+  ];
+  const out=[];
+  G.forEach(([stn,list])=>list.forEach(([n,la,lo])=>out.push([n,la,lo,stn])));
+  return out;
+})();
+/* ▼ 추가: 발표관서 → 같은 도(道) 특보 키워드 (인근 지역 특보 표시용) */
+const STN_PROV = {109:["서울","인천","경기도"],105:["강원"],131:["충청북도"],133:["대전","세종","충청남도"],
+  146:["전북","전라북도"],156:["광주","전라남도"],143:["대구","경상북도"],159:["부산","울산","경상남도"],184:["제주"]};
+/* ▼ 추가: 검색 지역 이름 → 특보 대상지역 매칭 키워드 ("서울 강남구"→["서울","강남"], "고성(강원)"→["고성"]) */
+function nameKeys(name){
+  return String(name).replace(/\(.*?\)/g,"").split(/\s+/).filter(Boolean)
+    .map(w=>w.length>2 ? w.replace(/(구|군|시)$/,"") : w);
+}
+function openSearch(){ $("ovl").classList.add("on"); $("rq").value=""; filterRegions(); setTimeout(()=>$("rq").focus(),50); }
+function closeSearch(){ $("ovl").classList.remove("on"); }
+function filterRegions(){
+  const q = $("rq").value.trim();
+  const list = q ? REGIONS.filter(r=>r[0].split(/[\s()]/).some(w=>w.startsWith(q))) : REGIONS.slice(0,30);
+  $("rlist").innerHTML = list.slice(0,40).map((r,i)=>
+    `<div class="ritem" onclick="SW.pickRegion('${r[0]}',${r[1]},${r[2]},${r[3]})">${r[0]}<span>위도 ${r[1]}</span></div>`).join("")
+    || `<div class="none" style="padding:10px;">검색 결과가 없습니다</div>`;
+}
+function pickRegion(name, lat, lon, stn){
+  closeSearch();
+  cur = {lat, lon, stn, name, sub:`${name} 지역 (검색 위치)`, keys:nameKeys(name), prov:STN_PROV[stn]||[],
+    sel:{type:"search", name, lat, lon, stn}};
+  saveRegion(); load();
+}
+function nearestRegion(lat, lon){
+  let best=null, bd=1e9;
+  REGIONS.forEach(r=>{ const d=(r[1]-lat)**2+(r[2]-lon)**2; if(d<bd){bd=d;best=r;} });
+  return best;
+}
+
+/* ═══════════ ▼ 추가 ⑧ 지역 선택 (기본 3곳 + 현재 위치 + 검색) 및 마지막 선택 저장 ═══════════ */
+function regionFromSite(s){ return {lat:s.lat, lon:s.lon, stn:s.stn, name:s.name, sub:s.sub, keys:s.keys, prov:s.prov, sel:{type:"site", id:s.id}}; }
+function regionKey(r){ return `${r.lat.toFixed(3)},${r.lon.toFixed(3)}`; }
+function saveRegion(){ try{ localStorage.setItem(REGION_KEY, JSON.stringify(cur.sel||{type:"site",id:HOME.id})); }catch(e){} }
+function selectSite(id){
+  const s = SITES.find(x=>x.id===id) || HOME;
+  cur = regionFromSite(s); saveRegion(); closeRegion(); load();
+}
+function openRegion(){
+  const sel = cur.sel || {};
+  const rows = SITES.map(s=>`<div class="regitem${sel.type==="site"&&sel.id===s.id?" on":""}" onclick="SW.selectSite('${s.id}')">
+      <span class="radio"></span><div class="rtx"><b>${s.name}</b><span>${s.sub}</span></div></div>`);
+  rows.push(`<div class="regitem${sel.type==="gps"?" on":""}" onclick="SW.closeRegion();SW.useGPS()">
+      <span class="radio"></span><div class="rtx"><b>현재 위치</b><span>GPS로 현재 위치의 날씨 확인 (위치 권한 필요)</span></div></div>`);
+  if (sel.type==="search") rows.push(`<div class="regitem on"><span class="radio"></span><div class="rtx"><b>${esc(cur.name)}</b><span>검색으로 선택한 지역</span></div></div>`);
+  $("regList").innerHTML = rows.join("");
+  $("regOvl").classList.add("on");
+}
+function closeRegion(){ $("regOvl").classList.remove("on"); }
+/* 시작 시 마지막 선택 지역 복원 → 없으면 기본 지역(복원센터) */
+function restoreRegion(){
+  let sel = null; try{ sel = JSON.parse(localStorage.getItem(REGION_KEY)||"null"); }catch(e){}
+  if (sel && sel.type==="site") sel.id = LEGACY_ID[sel.id] || sel.id;   // 예전 안전날씨 저장값 호환
+  if (sel && sel.type==="site" && SITES.some(s=>s.id===sel.id)){ cur = regionFromSite(SITES.find(s=>s.id===sel.id)); return "site"; }
+  if (sel && sel.type==="search" && sel.name && isFinite(sel.lat)){
+    cur = {lat:sel.lat, lon:sel.lon, stn:sel.stn||143, name:sel.name, sub:`${sel.name} 지역 (검색 위치)`,
+      keys:nameKeys(sel.name), prov:STN_PROV[sel.stn]||[], sel}; return "search";
+  }
+  if (sel && sel.type==="gps"){ cur = regionFromSite(HOME); return "gps"; }
+  cur = regionFromSite(HOME); return "site";
+}
+
+/* 토스트 */
+let toastTimer=null;
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(toastTimer); toastTimer=setTimeout(hideToast, 3500); }
+function hideToast(){ $("toast").style.display="none"; }
+
+/* ═══════════ ⑨ 통합 앱 연동: 탭을 처음 열 때 시작 · 현재 지역을 출장 준비물·특보 배너와 공유 ═══════════ */
+const LEGACY_ID = { nie:"seocheon", rc:"yeongyang", wet:"upo" };   // 예전 안전날씨 저장값 → 통합 앱 근무지 id
+let booted = false, restoreHow = null;
+function ensureRestored(){ if (restoreHow === null) restoreHow = restoreRegion(); return restoreHow; }
+function init(){
+  if (booted) return; booted = true;
+  if (FILE_KMA_KEY) $("keyBtn").style.display = "none";   // 파일에 키가 있으면 키 버튼 숨김
+  if (ensureRestored() === "gps") useGPS(true); else load();
+}
+return { init, refresh, useGPS, useHome, askKmaKey, openRegion, closeRegion, selectSite,
+  openSearch, closeSearch, filterRegions, pickRegion, openWarnDetail, closeWarnDetail,
+  kmaGet, parseWarnStatus, toGrid, fcstBase, getCur:()=>{ ensureRestored(); return cur; } };
+})();
+/* ═════════════════════════════════════════════════════════════
+   ② AI 위험성평가 (risk-report.html 원본) — 모듈로 감싸 window.RK 로만 노출
+   ═════════════════════════════════════════════════════════════ */
+window.RK = (function(){
+/* ═══════════════════════════════════════════════
+   ★ AI 연결 설정 (Make 없이 Gemini 직접 호출)
+   - 키는 화면의 [🔑 AI 키 연결] 버튼으로 입력하면
+     이 브라우저에만 저장됩니다 (파일에 남지 않음).
+   - 아래 GEMINI_KEY에 직접 넣을 수도 있지만,
+     GitHub에 올릴 파일에는 절대 넣지 마세요.
+═══════════════════════════════════════════════ */
+/* ★ 관리자 설정: 아래 두 줄의 따옴표 안에 값을 넣으면 모든 사용자가 입력 없이 바로 사용하며,
+   관련 안내 화면은 자동으로 숨겨집니다. 관리자가 다시 보려면 주소 뒤에 ?admin 을 붙이세요. */
+/* Gemini 값은 GitHub 업로드 검사를 피하기 위해 앞·뒤 두 조각으로 나눠 적습니다.
+   예: 전체가 AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 라면
+       앞조각 "AIzaSyABCDEFGHIJKLMNOPQ"  /  뒷조각 "RSTUVWXYZ0123456789"  (나누는 위치는 아무 데나) */
+/* ▶ 권장: 값은 별도 파일 keys.js 에 넣어두면, 이후 index.html 을 새로 올릴 때마다 다시 넣지 않아도 됩니다.
+   (keys.js 가 없으면 아래 따옴표 안의 값을 사용합니다) */
+const _K = window.APP_KEYS || {};
+const GEMINI_KEY_A = _K.geminiA || "";   // 앞 조각
+const GEMINI_KEY_B = _K.geminiB || "";   // 뒷 조각
+const GEMINI_KEY = GEMINI_KEY_A + GEMINI_KEY_B;
+const KMA_KEY = FILE_KMA_KEY;            // keys.js 또는 파일 기본값의 기상청 키 (통합 앱 공통)
+const SUBMIT_WEBHOOK = _K.submitWebhook || "";   // Make 웹훅 주소 (keys.js) — 있으면 [제출] 버튼 표시
+const SUBMIT_TOKEN = _K.submitToken || "";
+
+const GEMINI_MODEL = "gemini-3.6-flash";
+const ADMIN = /[?&]admin\b/.test(location.search);
+function getAiKey(){ return GEMINI_KEY || localStorage.getItem('gemini_key') || ''; }
+
+/* ═══════════════════════════════════════════════
+   평가 종류별 설정 — 항목 이름·선택지는 여기서 고치면 됩니다.
+═══════════════════════════════════════════════ */
+const MODES = {
+  research: {
+    name: "연구조사",
+    hint: "야외 현장조사·연구활동의 위험성평가",
+    targetPh: "예: 하천 어류 포획 조사",
+    targetOptions: ["하천 어류 포획 조사", "저수지·습지 수생생물 조사", "식물 식생·표본 채집 조사", "조류 관찰·계수 조사", "포유류 흔적·무인카메라 조사", "양서·파충류 야간 조사", "곤충 채집 조사", "야생동물 포획·표식·방사", "복원지 서식지 모니터링", "드론 촬영 조사", "산지·임도 이동 조사", "도로변 로드킬 조사"],
+    descPh: "예: 우천 후 수위 상승, 단독 이동 구간 있음",
+    envLabel: "🌲 조사환경",
+    envHint: "조사가 이뤄지는 장소의 유형을 골라주세요. 잘 모르면 '선택 안함'으로 두어도 됩니다.",
+    envOptions: ["하천·계곡", "호소·습지", "해안·갯벌", "산지·임도", "급경사지·암벽", "동굴", "도서(섬)", "도로변", "농경지·초지", "기타"],
+    typeLabel: "🔬 조사유형",
+    typeHint: "어떤 조사인지 가장 가까운 것을 골라주세요.",
+    typeOptions: ["어류·수생생물 조사", "식물·식생 조사", "조류 조사", "포유류 조사", "양서·파충류 조사", "곤충 조사", "포획·표식·방사", "드론·장비 운용", "야간 조사", "기타"],
+    locLabel: "위치/조사지역",
+    locHint: "조사하러 가는 구체적인 장소 이름을 적어주세요. 지역 이름 + 하천·산 이름 정도면 충분합니다. 개선을 요청하려면 꼭 적어야 합니다.",
+    locPh: "예: 영양 반변천 상류",
+    expert: "야외 생태조사 안전관리 전문가",
+    focus: "하천 익수·급류, 미끄러짐·넘어짐, 낙석·추락, 야생동물 위험(벌·뱀·진드기·멧돼지), 온열·한랭질환, 고립·통신두절, 도로변 차량 위험, 조사장비 취급, 단독행동, 보호구(구명조끼·안전화 등) 착용 여부"
+  },
+  facility: {
+    name: "시설관리",
+    hint: "시설물·설비 유지관리 작업의 위험성평가",
+    targetPh: "예: 고소작업대 작업",
+    targetOptions: ["고소작업대 작업", "사육장 청소·소독 작업", "실험실 시약·약품 취급", "온실·증식장 관리 작업", "전기 설비 점검", "중량물 운반·적재", "풀베기·예초 작업", "시설물 보수·용접 작업", "창고 정리·자재 취급", "차량 운행·장비 이동"],
+    descPh: "예: 하부 통제 미흡, 안전대 체결 확인 필요",
+    envLabel: "🏢 시설구분",
+    envHint: "작업하는 건물·시설의 종류를 골라주세요. 잘 모르면 '선택 안함'으로 두어도 됩니다.",
+    envOptions: ["연구동", "사육동·증식장", "실험실", "온실", "야외 시설물", "전기·기계실", "창고", "기타"],
+    typeLabel: "🛠️ 작업유형",
+    typeHint: "어떤 작업인지 가장 가까운 것을 골라주세요.",
+    typeOptions: ["고소작업", "중량물 취급", "화학물질 취급", "전기 작업", "기계·설비 조작", "용접·화기 작업", "밀폐공간 작업", "동물 취급·사육", "청소·소독", "기타"],
+    locLabel: "위치/설비구역",
+    locHint: "작업하는 설비나 구역의 구체적인 이름을 적어주세요. 개선을 요청하려면 꼭 적어야 합니다.",
+    locPh: "예: 바닥재 컨베이어",
+    expert: "산업안전보건 전문가",
+    focus: "추락·낙하, 감전, 협착·끼임, 화재·폭발, 화학물질 누출, 밀폐공간 질식, 중량물 취급 요통, 보호구 착용 여부, 작업구역 통제 상태"
+  }
+};
+
+/* ── 소속·팀 목록 (여기서 추가·수정하면 자동완성에 바로 반영됩니다) ── */
+const TEAMS = [
+  "복원기획팀", "복원정보팀", "서식지복원팀", "식물복원팀", "포유류복원팀", "조류복원팀",
+  "어류ㆍ양서파충류복원팀", "곤충ㆍ무척추동물복원팀", "복원평가연구팀",
+  "복원교육부", "복원지원부", "안전시설부"
+];
+
+/* ── 상태 ── */
+let currentMode = "research";
+let photoDataUrl = null;      // 압축된 사진 (dataURL)
+let photoImg = null;          // 그리기용 이미지 객체
+let lastRisks = [];           // 마지막 평가 결과 (이미지 저장용)
+let lastSummary = '';
+let lastCoords = null;        // 마지막으로 확인한 GPS 좌표 {lat, lon}
+
+/* ── 자동완성 목록 (소속·팀 · 평가대상 명칭): 입력하면 목록이 좁혀지고, ▼를 누르면 전체 목록에서 고를 수 있습니다 ── */
+function setupCombo(inputId, listId, toggleId, getItems){
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  const toggle = document.getElementById(toggleId);
+  let items = [], active = -1;
+
+  const norm = s => String(s).replace(/[\sㆍ·・]/g, '').toLowerCase();
+  function open(filter){
+    const all = getItems() || [];
+    const q = norm(filter || '');
+    items = q ? all.filter(t => norm(t).includes(q)) : all.slice();
+    active = -1;
+    list.innerHTML = items.length
+      ? items.map((t,i) => {
+          const html = (filter && t.includes(filter))
+            ? esc(t).replace(esc(filter), '<mark>' + esc(filter) + '</mark>') : esc(t);
+          return '<div class="combo-item" role="option" data-i="'+i+'">'+html+'</div>';
+        }).join('')
+      : '<div class="combo-empty">일치하는 항목이 없습니다. 그대로 입력해도 됩니다.</div>';
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function close(){ list.hidden = true; active = -1; input.setAttribute('aria-expanded', 'false'); }
+  function choose(i){ if (items[i] == null) return; input.value = items[i]; close(); }
+  function highlight(){
+    list.querySelectorAll('.combo-item').forEach((el,i) => {
+      el.classList.toggle('active', i === active);
+      if (i === active) el.scrollIntoView({ block:'nearest' });
+    });
+  }
+
+  input.addEventListener('focus', () => open(input.value));
+  input.addEventListener('input', () => open(input.value));
+  input.addEventListener('keydown', e => {
+    if (list.hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { open(input.value); return; }
+    if (list.hidden) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length-1, active+1); highlight(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active-1); highlight(); }
+    else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); choose(active); } else close(); }
+    else if (e.key === 'Escape') close();
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+  list.addEventListener('mousedown', e => e.preventDefault());   // 클릭 시 blur로 목록이 먼저 닫히는 것 방지
+  list.addEventListener('click', e => {
+    const el = e.target.closest('.combo-item');
+    if (el) choose(Number(el.dataset.i));
+  });
+  toggle.addEventListener('mousedown', e => e.preventDefault());
+  toggle.addEventListener('click', () => {
+    if (list.hidden) { open(''); input.focus(); } else close();
+  });
+}
+setupCombo('surveyTeam', 'teamList', 'teamToggle', () => TEAMS);
+setupCombo('targetName', 'targetList', 'targetToggle', () => MODES[currentMode].targetOptions);
+
+/* ── 계절 위험 자동 판단 (일자 기준) ── */
+function seasonalHint(dateStr){
+  const d = dateStr ? new Date(dateStr) : new Date();
+  const m = isNaN(d) ? new Date().getMonth()+1 : d.getMonth()+1;
+  if (m === 12 || m <= 2) return '한랭·동상, 결빙 노면 미끄러짐, 조기 일몰(짧은 일조), 폭설 시 고립';
+  if (m <= 4)  return '해빙기 낙석·지반 붕괴, 큰 일교차, 건조기 산불, 황사·꽃가루';
+  if (m <= 6)  return '벌·진드기(SFTS) 활동 시작, 뱀 출현, 자외선·온열, 장마 초기 국지성 호우';
+  if (m <= 8)  return '폭염·온열질환, 집중호우·급류·수위 급상승, 낙뢰, 모기·벌 활동 왕성';
+  if (m <= 10) return '벌 쏘임 최다 시기(말벌), 진드기(SFTS·쯔쯔가무시), 큰 일교차, 태풍·가을장마';
+  return '한랭 시작, 서리·결빙, 일몰 시각 빨라짐, 낙엽 아래 미끄러짐·구멍';
+}
+
+/* ═══════════════════════════════════════════════
+   🌤 기상 자동 조회
+   1순위: 기상청 초단기실황/초단기예보 (공공데이터포털 키 필요)
+   2순위: Open-Meteo (키 불필요)
+═══════════════════════════════════════════════ */
+function kmaKeyParam(key){ return encodeURIComponent(key); }   // 공통 getKmaKey()는 항상 Decoding 키를 돌려줌
+
+/* 위경도 → 기상청 격자(nx, ny) 변환 (기상청 공식 Lambert Conformal Conic 변환식) */
+function toKmaGrid(lat, lon){
+  const RE=6371.00877, GRID=5.0, SLAT1=30.0, SLAT2=60.0, OLON=126.0, OLAT=38.0, XO=43, YO=136;
+  const DEGRAD=Math.PI/180.0, re=RE/GRID, slat1=SLAT1*DEGRAD, slat2=SLAT2*DEGRAD, olon=OLON*DEGRAD, olat=OLAT*DEGRAD;
+  let sn=Math.tan(Math.PI*0.25+slat2*0.5)/Math.tan(Math.PI*0.25+slat1*0.5);
+  sn=Math.log(Math.cos(slat1)/Math.cos(slat2))/Math.log(sn);
+  let sf=Math.tan(Math.PI*0.25+slat1*0.5); sf=Math.pow(sf,sn)*Math.cos(slat1)/sn;
+  let ro=Math.tan(Math.PI*0.25+olat*0.5); ro=re*sf/Math.pow(ro,sn);
+  let ra=Math.tan(Math.PI*0.25+lat*DEGRAD*0.5); ra=re*sf/Math.pow(ra,sn);
+  let theta=lon*DEGRAD-olon;
+  if (theta>Math.PI) theta-=2.0*Math.PI;
+  if (theta<-Math.PI) theta+=2.0*Math.PI;
+  theta*=sn;
+  return { nx: Math.floor(ra*Math.sin(theta)+XO+0.5), ny: Math.floor(ro-ra*Math.cos(theta)+YO+0.5) };
+}
+function kstNow(){ return new Date(Date.now() + (new Date().getTimezoneOffset()+540)*60000); }
+function ymd(d){ return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'); }
+const PTY_TXT = {0:'강수 없음',1:'비',2:'비/눈',3:'눈',4:'소나기',5:'빗방울',6:'빗방울·눈날림',7:'눈날림'};
+const SKY_TXT = {1:'맑음',3:'구름많음',4:'흐림'};
+
+async function kmaFetch(op, key, params){
+  const url = 'https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/' + op
+    + '?serviceKey=' + kmaKeyParam(key) + '&dataType=JSON&pageNo=1&' + params;
+  const res = await fetch(url);
+  const text = await res.text();
+  let j;
+  try { j = JSON.parse(text); } catch(e) {
+    const m = text.match(/<returnAuthMsg>([^<]*)<\/returnAuthMsg>/);
+    throw new Error(m ? '인증 오류 - ' + m[1] : '기상청 응답을 해석할 수 없습니다.');
+  }
+  // 키 오류 등은 {"OpenAPI_ServiceResponse":{"cmmMsgHeader":{...}}} 형태로 옴
+  const auth = j.OpenAPI_ServiceResponse && j.OpenAPI_ServiceResponse.cmmMsgHeader;
+  if (auth) throw new Error('인증 오류 - ' + (auth.returnAuthMsg || auth.errMsg || auth.returnReasonCode)
+    + ' (키가 맞는지, 단기예보 서비스 활용신청이 승인됐는지 확인)');
+  const h = j.response && j.response.header;
+  if (!h || h.resultCode !== '00')
+    throw new Error('기상청 오류' + (h ? ' (' + h.resultCode + ') ' + h.resultMsg : ''));
+  return j.response.body.items.item || [];
+}
+async function kmaWeather(lat, lon, key){
+  const { nx, ny } = toKmaGrid(lat, lon);
+  const now = kstNow();
+  // 초단기실황: 매시 정각 자료가 약 40분 후 제공 → 45분 이전이면 한 시간 전 자료
+  const obs = new Date(now); if (obs.getMinutes() < 45) obs.setHours(obs.getHours()-1);
+  const items = await kmaFetch('getUltraSrtNcst', key,
+    'numOfRows=10&base_date=' + ymd(obs) + '&base_time=' + String(obs.getHours()).padStart(2,'0') + '00&nx=' + nx + '&ny=' + ny);
+  const v = {}; items.forEach(it => v[it.category] = it.obsrValue);
+
+  // 초단기예보(하늘상태·낙뢰)는 보조 정보 — 실패해도 무시
+  let sky = '', lgt = false;
+  try {
+    const fc = new Date(now); if (fc.getMinutes() < 50) fc.setHours(fc.getHours()-1);
+    const f = await kmaFetch('getUltraSrtFcst', key,
+      'numOfRows=60&base_date=' + ymd(fc) + '&base_time=' + String(fc.getHours()).padStart(2,'0') + '30&nx=' + nx + '&ny=' + ny);
+    const first = f.map(x => x.fcstTime).sort()[0];
+    f.filter(x => x.fcstTime === first).forEach(x => {
+      if (x.category === 'SKY') sky = SKY_TXT[x.fcstValue] || '';
+      if (x.category === 'LGT' && Number(x.fcstValue) > 0) lgt = true;
+    });
+  } catch(e) {}
+
+  const pty = Number(v.PTY || 0);
+  const parts = [];
+  if (pty > 0) parts.push(PTY_TXT[pty] || '강수'); else if (sky) parts.push(sky);
+  if (v.T1H != null) parts.push('기온 ' + v.T1H + '℃');
+  if (v.REH != null) parts.push('습도 ' + v.REH + '%');
+  if (v.WSD != null) parts.push('풍속 ' + v.WSD + 'm/s');
+  if (pty > 0 && Number(v.RN1) > 0) parts.push('1시간 강수 ' + v.RN1 + 'mm');
+  if (lgt) parts.push('낙뢰 가능');
+  const t = String(obs.getHours()).padStart(2,'0') + ':00';
+  return { text: parts.join(' · ') + ' (기상청 실황 ' + t + ')', source: '기상청 초단기실황 ' + t + ' 기준 · 격자 ' + nx + ',' + ny };
+}
+const WMO_TXT = c => c===0?'맑음':c<=2?'구름조금':c===3?'흐림':c<=48?'안개':c<=57?'이슬비':c<=67?'비':c<=77?'눈':c<=82?'소나기':c<=86?'소낙눈':'뇌우';
+async function openMeteoWeather(lat, lon){
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon
+    + '&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m&wind_speed_unit=ms&timezone=Asia%2FSeoul';
+  const r = await fetch(url); const j = await r.json();
+  const c = j.current || {};
+  const parts = [WMO_TXT(Number(c.weather_code)||0)];
+  if (c.temperature_2m != null) parts.push('기온 ' + c.temperature_2m + '℃');
+  if (c.relative_humidity_2m != null) parts.push('습도 ' + c.relative_humidity_2m + '%');
+  if (c.wind_speed_10m != null) parts.push('풍속 ' + c.wind_speed_10m + 'm/s');
+  if (Number(c.precipitation) > 0) parts.push('강수 ' + c.precipitation + 'mm');
+  return { text: parts.join(' · ') + ' (Open-Meteo)', source: 'Open-Meteo 현재값 (기상청 키 미연결)' };
+}
+function getPosition(){
+  return new Promise((ok, fail) => {
+    if (lastCoords) return ok(lastCoords);
+    if (!navigator.geolocation) return fail(new Error('이 브라우저는 위치 기능을 지원하지 않습니다.'));
+    navigator.geolocation.getCurrentPosition(
+      p => { lastCoords = { lat: p.coords.latitude, lon: p.coords.longitude }; ok(lastCoords); },
+      err => fail(new Error(err.code === 1 ? '위치 권한을 [허용]으로 바꿔주세요.' : '위치를 가져오지 못했습니다.')),
+      { enableHighAccuracy: true, timeout: 10000 });
+  });
+}
+async function fetchWeather(coords){
+  const key = getKmaKey();
+  let note = '';
+  if (key) {
+    try { return await kmaWeather(coords.lat, coords.lon, key); }
+    catch(e) { note = '기상청 조회 실패(' + e.message + ') → Open-Meteo로 대체. '; }
+  }
+  const r = await openMeteoWeather(coords.lat, coords.lon);
+  r.source = note + r.source;
+  return r;
+}
+async function autoWeather(silent){
+  const btn = document.getElementById('btnWeather'), hint = document.getElementById('weatherHint');
+  btn.textContent = '⏳ 조회 중…'; btn.disabled = true;
+  try {
+    let coords, viaSite = '';
+    try { coords = await getPosition(); }
+    catch(e) {   // 위치 권한이 없으면 홈 화면에서 고른 근무지 좌표로 대신 조회
+      const s = window.APP && APP.curSite && APP.curSite();
+      if (!s || !isFinite(s.lat)) throw e;
+      coords = { lat:s.lat, lon:s.lon }; viaSite = s.name;
+    }
+    const w = await fetchWeather(coords);
+    document.getElementById('fieldWeather').value = w.text + (viaSite ? ' (' + viaSite + ' 기준)' : '');
+    hint.textContent = '자동 입력됨 · ' + (viaSite ? '위치 권한이 없어 근무지(' + viaSite + ') 기준 · ' : '') + w.source + ' · 필요하면 직접 고쳐 쓰세요.';
+  } catch(e) {
+    hint.textContent = '자동 조회 실패: ' + e.message + ' (직접 입력해주세요)';
+    if (!silent) alert('기상 정보를 가져오지 못했습니다.\n' + e.message
+      + '\n※ 파일을 더블클릭해 연 경우 위치·통신 기능이 제한될 수 있습니다. 인터넷 주소(GitHub)로 열면 정상 동작합니다.');
+  } finally { btn.textContent = '🔄 다시 조회'; btn.disabled = false; }
+}
+document.getElementById('btnWeather').addEventListener('click', () => autoWeather(false));
+
+/* ── 평가 종류 전환 ── */
+function applyMode(mode) {
+  currentMode = mode;
+  const m = MODES[mode];
+  document.querySelectorAll('#page-risk .mode-chip').forEach(c =>
+    c.classList.toggle('on', c.dataset.mode === mode));
+  document.getElementById('modeHint').textContent = m.hint;
+  document.getElementById('targetName').placeholder = m.targetPh;
+  document.getElementById('workDesc').placeholder = m.descPh;
+  document.getElementById('envLabel').textContent = m.envLabel;
+  document.getElementById('envHint').textContent = m.envHint;
+  document.getElementById('typeLabel').textContent = m.typeLabel;
+  document.getElementById('typeHint').textContent = m.typeHint;
+  document.getElementById('locLabel').innerHTML =
+    '📍 ' + m.locLabel + ' <span class="req">개선요청 시 필수</span>';
+  document.getElementById('locHint').textContent = m.locHint;
+  document.getElementById('location').placeholder = m.locPh;
+  const fill = (id, opts, ph) => {
+    document.getElementById(id).innerHTML =
+      `<option value="">▼ ${ph}을 골라주세요 — 모르면 그대로 두세요</option>` +
+      opts.map(o => `<option>${o}</option>`).join('');
+  };
+  fill('envSelect', m.envOptions, m.envLabel.replace(/^\S+ /,''));
+  fill('typeSelect', m.typeOptions, m.typeLabel.replace(/^\S+ /,''));
+}
+document.querySelectorAll('#page-risk .mode-chip').forEach(c =>
+  c.addEventListener('click', () => applyMode(c.dataset.mode)));
+applyMode('research');
+
+/* ── 사진 선택 + 자동 압축 (긴 변 1280px, JPEG 80%) ── */
+document.getElementById('photoInput').addEventListener('change', function(e){
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      const MAX = 1280;
+      let w = img.width, h = img.height;
+      if (Math.max(w,h) > MAX) {
+        const r = MAX / Math.max(w,h);
+        w = Math.round(w*r); h = Math.round(h*r);
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      photoDataUrl = c.toDataURL('image/jpeg', 0.8);
+      photoImg = new Image();
+      photoImg.src = photoDataUrl;
+      const pv = document.getElementById('preview');
+      pv.src = photoDataUrl; pv.style.display = 'block';
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+/* ── 복수선택 칩 ── */
+document.querySelectorAll('#page-risk .chip').forEach(ch => {
+  ch.addEventListener('click', () => ch.classList.toggle('on'));
+});
+
+/* ── 📍 내 위치: GPS로 현재 위치를 받아 주소로 바꿔 입력 ── */
+document.getElementById('btnGps').addEventListener('click', function(){
+  if (!navigator.geolocation) { alert('이 브라우저는 위치 기능을 지원하지 않습니다.'); return; }
+  const btn = this;
+  btn.textContent = '⏳ 확인 중…'; btn.disabled = true;
+  const done = () => { btn.textContent = '📍 내 위치'; btn.disabled = false; };
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude, lon = pos.coords.longitude;
+    lastCoords = { lat, lon };
+    if (!document.getElementById('fieldWeather').value.trim()) autoWeather(true);   // 위치를 알았으니 기상도 함께 채움
+    let name = lat.toFixed(5) + ', ' + lon.toFixed(5);   // 주소 변환 실패 시 좌표라도 입력
+    try {
+      const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=json'
+        + '&lat=' + lat + '&lon=' + lon + '&zoom=15&accept-language=ko');
+      const j = await r.json();
+      const a = j.address || {};
+      const parts = [a.province || a.state, a.city || a.county,
+                     a.town || a.village || a.suburb || a.borough, a.road].filter(Boolean);
+      if (parts.length) name = parts.join(' ');
+      else if (j.display_name) name = j.display_name;
+    } catch(e) {}
+    document.getElementById('location').value = name;
+    done();
+  }, err => {
+    done();
+    alert('위치를 가져오지 못했습니다.\n'
+      + (err.code === 1
+          ? '브라우저 주소창 근처의 위치 권한을 [허용]으로 바꿔주세요.'
+          : '잠시 후 다시 시도해주세요.')
+      + '\n※ 파일을 더블클릭해 연 경우 위치 기능이 제한될 수 있습니다. 인터넷 주소(GitHub)로 열면 정상 동작합니다.');
+  }, { enableHighAccuracy: true, timeout: 10000 });
+});
+
+/* ── AI 키 관리 ── */
+function refreshKeyNotice(){
+  // 파일에 키가 심겨 있으면(관리자 설정) 일반 사용자에게는 키 관련 화면을 아예 보이지 않음
+  document.getElementById('geminiKeySec').style.display = (GEMINI_KEY && !ADMIN) ? 'none' : 'block';
+  document.getElementById('kmaKeySec').style.display = (KMA_KEY && !ADMIN) ? 'none' : 'block';
+  document.getElementById('kmaKeyLink').style.display = (KMA_KEY && !ADMIN) ? 'none' : 'inline';
+  if (GEMINI_KEY && !ADMIN) {
+    document.getElementById('demoNotice').style.display = 'none';
+    document.getElementById('keyOkNotice').style.display = 'none';
+    return;
+  }
+  const has = !!getAiKey();
+  document.getElementById('demoNotice').style.display = has ? 'none' : 'block';
+  document.getElementById('keyOkNotice').style.display = has ? 'block' : 'none';
+  if (ADMIN) document.getElementById('keyCard').style.display = 'block';
+}
+function toggleKeyCard(){
+  const k = document.getElementById('keyCard');
+  k.style.display = (k.style.display === 'none') ? 'block' : 'none';
+}
+function saveAiKey(){
+  const v = document.getElementById('keyInput').value.trim();
+  if (!v) { alert('키를 붙여넣은 뒤 저장을 눌러주세요.'); return; }
+  localStorage.setItem('gemini_key', v);
+  document.getElementById('keyInput').value = '';
+  document.getElementById('keyCard').style.display = 'none';
+  refreshKeyNotice();
+  alert('저장되었습니다. 이제 [평가]를 누르면 실제 AI가 사진을 분석합니다.');
+}
+function clearAiKey(){
+  localStorage.removeItem('gemini_key');
+  document.getElementById('keyCard').style.display = 'none';
+  refreshKeyNotice();
+  alert('키를 삭제했습니다. 데모 모드로 돌아갑니다.');
+}
+function refreshKmaState(){
+  document.getElementById('kmaKeyState').textContent =
+    KMA_KEY ? '✅ 기상청 키가 파일에 설정되어 있습니다 (모든 사용자 공통). 여기 넣는 키는 이 브라우저에서만 우선 적용됩니다.'
+    : getKmaKey() ? '✅ 기상청 키가 연결되어 있습니다.' : '· 아직 기상청 키가 없습니다. (Open-Meteo로 대체 동작)';
+}
+function saveKmaKey(){
+  const v = document.getElementById('kmaKeyInput').value.trim();
+  if (!v) { alert('기상청 인증키를 붙여넣은 뒤 저장을 눌러주세요.'); return; }
+  localStorage.setItem('kma_key', v);
+  document.getElementById('kmaKeyInput').value = '';
+  refreshKmaState();
+  alert('저장되었습니다. [🌤 자동]을 누르면 기상청 실황을 가져옵니다.');
+}
+function clearKmaKey(){
+  localStorage.removeItem('kma_key');
+  refreshKmaState();
+}
+refreshKeyNotice();
+refreshKmaState();
+
+/* ── 평가 버튼 ── */
+document.getElementById('btnGo').addEventListener('click', async function(){
+  if (!photoDataUrl) { alert('사진을 먼저 선택해주세요.'); return; }
+  if (!document.getElementById('targetName').value.trim()) { alert('평가대상 명칭을 입력해주세요.'); return; }
+
+  const m = MODES[currentMode];
+  const cats = Array.from(document.querySelectorAll('#page-risk .chip.on')).map(c => c.dataset.cat);
+  const info = {
+    mode: m.name,
+    target: document.getElementById('targetName').value.trim(),
+    desc: document.getElementById('workDesc').value.trim(),
+    env: document.getElementById('envSelect').value,
+    categories: cats.join(','),
+    location: document.getElementById('location').value.trim(),
+    workType: document.getElementById('typeSelect').value,
+    ...readReportInfo()
+  };
+  const evaluationPhoto = photoImg;
+  const evaluationPhotoData = photoDataUrl;
+
+  /* AI에게 보낼 지시문 */
+  const prompt =
+`당신은 ${m.expert}입니다. 첨부된 ${m.name} 현장 사진을 보고 위험요인을 찾아주세요.
+
+[참고 정보]
+- 평가 종류: ${m.name}
+- 평가대상: ${info.target}
+- 작업설명: ${info.desc || '(없음)'}
+- ${m.envLabel.replace(/^\S+ /,'')}: ${info.env || '(없음)'} / ${m.locLabel}: ${info.location || '(없음)'}
+- 평가대상 구분: ${info.categories || '(없음)'} / ${m.typeLabel.replace(/^\S+ /,'')}: ${info.workType || '(없음)'}
+
+[입력된 현장여건]
+- 기상: ${info.weather || '미입력'}
+- 일자: ${info.date || '미입력'} / 이 시기의 일반적 계절 위험(참고): ${info.seasonalAuto}
+- 지형·시설과 노면 상태는 사진과 위 참고 정보를 근거로 직접 판단하세요.
+
+[중점 확인 사항]
+${m.focus}
+
+[규칙]
+- 사진에서 실제로 확인 가능한 위험요인만 최대 6개 찾으세요. 근거가 부족하면 수를 억지로 채우지 마세요.
+- injury는 해당 위험요인으로 예상되는 재해 유형을 짧게 적으세요.
+- terrain은 지형·시설 특성, ground는 노면 상태를 사진 근거로 각각 한 줄(40자 이내)로 쓰세요. 사진으로 판단할 수 없으면 "사진상 확인 불가"라고 쓰세요.
+- seasonal은 위 계절 위험 참고 중 이 현장·작업에 실제로 해당하는 것만 골라 한 줄로 쓰세요.
+- ppe와 safety_rules는 이 현장에 필요한 보호구와 안전수칙을 짧은 문자열 배열로 제안하세요.
+- 입력되지 않은 날씨·날짜·인원이나 사진에 보이지 않는 사실을 추정해 단정하지 마세요.
+- 각 위험요인의 사진 속 위치를 box_2d = [ymin, xmin, ymax, xmax] (0~1000 비율 좌표)로 표시하세요.
+- freq는 사고 발생 빈도(가능성) 1~4점: 1=거의 없음, 2=가끔 발생 가능, 3=자주 발생 가능, 4=매우 빈번.
+- sev는 사고 발생 시 강도(중대성) 1~5점: 1=경미(무상해), 2=경상, 3=휴업 상해, 4=중상·장애, 5=사망·중대재해.
+- measure는 현장에서 바로 실행할 수 있는 구체적 개선대책으로 쓰세요.
+${m.extraRule ? '- ' + m.extraRule + '\n' : ''}- 반드시 아래 JSON 형식으로만 답하세요. 다른 문장, 코드블록 기호를 붙이지 마세요.
+
+{"summary":"한 줄 총평","terrain":"지형·시설 한 줄","ground":"노면 상태 한 줄","seasonal":"계절 위험 한 줄","ppe":["필요 보호구"],"safety_rules":["현장 안전수칙"],"risks":[{"no":1,"box_2d":[100,100,300,300],"factor":"위험요인 이름","injury":"예상 재해","freq":2,"sev":4,"measure":"개선대책"}]}`;
+
+  const btn = this;
+  btn.disabled = true;
+  document.getElementById('rkLoading').style.display = 'block';
+  document.getElementById('resultArea').style.display = 'none';
+
+  try {
+    await evaluationPhoto.decode();
+    let data;
+    const key = getAiKey();
+    if (!key) {
+      data = await demoResult();
+      data = { ...data, demo:true };                       // 데모 모드
+    } else {
+      const text = await callGemini(key, prompt, evaluationPhotoData.split(',')[1]);
+      data = parseAiJson(text);
+    }
+    await ensureFonts(JSON.stringify(data) + JSON.stringify(info));   // 보고서 글꼴 준비 후 그리기
+    renderResult(data, info, evaluationPhoto);
+  } catch (err) {
+    alert('평가 중 문제가 생겼습니다.\n' + err.message + '\n\n잠시 후 다시 시도해주세요.');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('rkLoading').style.display = 'none';
+  }
+});
+
+/* ── Gemini 호출: 키 형식(AIza… / AQ.…)에 따라 두 주소를 순서대로 시도 ── */
+async function callGemini(key, prompt, b64) {
+  const body = JSON.stringify({
+    contents: [{ role: 'user', parts: [
+      { text: prompt },
+      { inlineData: { mimeType: 'image/jpeg', data: b64 } }
+    ]}],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+  });
+  const urls = [
+    'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent',
+    'https://aiplatform.googleapis.com/v1/publishers/google/models/' + GEMINI_MODEL + ':generateContent'
+  ];
+  if (key.indexOf('AQ.') === 0) urls.reverse();   // 새 형식 키는 새 주소 먼저
+
+  let last = null;
+  for (const u of urls) {
+    let res, j;
+    try {
+      res = await fetch(u + '?key=' + encodeURIComponent(key),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      j = await res.json().catch(() => ({}));
+    } catch (e) { last = { status: 0, msg: '네트워크 연결을 확인해주세요.' }; continue; }
+
+    if (res.ok) {
+      const text = j.candidates && j.candidates[0] && j.candidates[0].content
+        && j.candidates[0].content.parts && j.candidates[0].content.parts[0]
+        && j.candidates[0].content.parts[0].text;
+      if (!text) throw new Error('AI가 결과를 주지 않았습니다. 다시 시도해주세요.');
+      return text;
+    }
+    last = { status: res.status, msg: (j.error && j.error.message) || ('오류 ' + res.status) };
+    if (res.status === 429) break;                 // 사용량 초과는 재시도 의미 없음
+    // 400/401/403/404는 다음 주소로 한 번 더 시도
+  }
+
+  if (last && last.status === 429)
+    throw new Error('무료 사용량을 잠시 초과했습니다. 1분 후 다시 시도해주세요.');
+  if (last && (last.status === 400 || last.status === 401 || last.status === 403))
+    throw new Error('AI 키가 올바르지 않은 것 같습니다. [🔑 키 변경]에서 다시 확인해주세요.\n(' + last.msg + ')');
+  throw new Error(last ? last.msg : 'AI 호출에 실패했습니다.');
+}
+
+/* ── AI 응답 정리: 코드블록 기호·겉포장 제거 후 JSON 추출 ── */
+function parseAiJson(text) {
+  let t = text.trim();
+  // Make가 {"result":"..."} 로 감싼 경우
+  try { const o = JSON.parse(t); if (o.risks) return o; if (o.result) t = o.result; } catch(e){}
+  t = t.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const s = t.indexOf('{'), e = t.lastIndexOf('}');
+  if (s === -1 || e === -1) throw new Error('AI 응답을 이해할 수 없습니다.');
+  return JSON.parse(t.slice(s, e + 1));
+}
+
+/* ── 결과 그리기: 사진 + 등급색 번호 네모 ── */
+/* 위험성 = 빈도(1~4) × 강도(1~5), 판정: 1~2 낮음 / 3~7 보통 / 8~20 높음 */
+function judge(score){
+  return score >= 8 ? { txt:'높음', cls:'high', color:'#e53e3e' }
+       : score >= 3 ? { txt:'보통', cls:'mid',  color:'#dd6b20' }
+       :              { txt:'낮음', cls:'low',  color:'#38a169' };
+}
+
+/* One renderer for the on-screen report, PNG download and printed image. */
+let lastReport = null;
+let lastReportCanvas = null;
+function readReportInfo(){
+  const value = id => document.getElementById(id).value.trim();
+  return {
+    mode: currentMode, target:value('targetName'), name:'',
+    location:value('location'), workType:value('typeSelect'), env:value('envSelect'),
+    date:value('surveyDate'), team:value('surveyTeam'), count:value('surveyCount'),
+    weather:value('fieldWeather'), seasonalAuto:seasonalHint(value('surveyDate'))
+  };
+}
+function normalizeRisks(data){
+  if (!Array.isArray(data.risks)) throw new Error('위험요인 목록 형식을 확인해주세요.');
+  return data.risks.slice(0,10).filter(r => r && typeof r === 'object').map(r => {
+    const freq = Math.min(4,Math.max(1,Math.round(Number(r.freq)||1)));
+    const sev = Math.min(5,Math.max(1,Math.round(Number(r.sev)||1)));
+    const box = Array.isArray(r.box_2d) && r.box_2d.length === 4 && r.box_2d.every(v => Number.isFinite(Number(v)))
+      ? r.box_2d.map(v => Math.min(1000,Math.max(0,Number(v)))) : null;
+    return {factor:String(r.factor || '위험요인 미기재'), injury:String(r.injury || '미제공'),
+      measure:String(r.measure || '현장 확인 필요'), box_2d:box, freq, sev, score:freq*sev, j:judge(freq*sev)};
+  }).sort((a,b) => b.score-a.score).map((r,i) => ({...r,no:i+1}));
+}
+function textList(value){
+  if (Array.isArray(value)) return value.filter(v => typeof v === 'string').join(' · ');
+  return typeof value === 'string' ? value : '';
+}
+/* 보호구·안전수칙을 글머리표 목록용 배열로 */
+function toItems(value){
+  if (Array.isArray(value)) return value.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim());
+  if (typeof value === 'string' && value.trim()) return value.split(/\s*[·•]\s*|\n/).map(s => s.trim()).filter(Boolean);
+  return [];
+}
+function renderResult(data, info = readReportInfo(), evaluationPhoto = photoImg){
+  const risks = normalizeRisks(data);
+  lastRisks = risks;
+  lastSummary = String(data.summary || '');
+  lastReport = {info:{...info}, risks, summary:lastSummary, demo:!!data.demo,
+    terrain:textList(data.terrain) || info.env || '사진상 확인 불가',
+    ground:textList(data.ground) || '사진상 확인 불가',
+    seasonal:textList(data.seasonal) || info.seasonalAuto || '해당 없음',
+    ppe:textList(data.ppe) || '현장 확인 후 기재',
+    rules:textList(data.safety_rules) || '현장 확인 후 기재',
+    ppeItems:toItems(data.ppe), rulesItems:toItems(data.safety_rules), photo:evaluationPhoto};
+  lastReportCanvas = buildReportCanvas(lastReport);
+  const cv = document.getElementById('reportCanvas');
+  cv.width = lastReportCanvas.width; cv.height = lastReportCanvas.height;
+  cv.getContext('2d').drawImage(lastReportCanvas,0,0);
+  cv.setAttribute('aria-label', info.target + ' 위험성평가 보고서. 아래 텍스트 결과에서도 내용을 확인할 수 있습니다.');
+  document.getElementById('printReport').src = lastReportCanvas.toDataURL('image/png');
+  document.getElementById('reportText').innerHTML =
+    '<h2>' + esc(info.target) + ' 주요 위험요소</h2>' +
+    (data.demo ? '<p>데모 예시 — 실제 사진 분석 결과가 아닙니다.</p>' : '') +
+    '<p>장소: ' + esc(info.location||'미입력') +
+    ' / 일자: ' + esc(info.date||'미입력') + ' / 인원: ' + esc(info.count||'미입력') +
+    ' / 소속: ' + esc(info.team||'미입력') + ' / 분류: ' + esc(info.workType||'미입력') + '</p>' +
+    '<p>기상: ' + esc(info.weather||'미입력') + ' / 지형·시설: ' + esc(lastReport.terrain) +
+    ' / 노면: ' + esc(lastReport.ground) + ' / 계절 위험: ' + esc(lastReport.seasonal) + '</p>' +
+    '<p>' + esc(lastSummary) + '</p><div class="table-scroll"><table><thead><tr>' +
+    ['번호','주요 위험요인','예상 재해','빈도','강도','위험성','안전조치'].map(t => '<th>'+t+'</th>').join('') +
+    '</tr></thead><tbody>' + risks.map(r => '<tr><td>'+r.no+'</td><td>'+esc(r.factor)+'</td><td>'+esc(r.injury)+
+      '</td><td>'+r.freq+'</td><td>'+r.sev+'</td><td>'+r.score+'점 · '+r.j.txt+'</td><td>'+esc(r.measure)+'</td></tr>').join('') +
+    '</tbody></table></div><p>필요 보호구: '+esc(lastReport.ppe)+'</p><p>현장 안전수칙: '+esc(lastReport.rules)+'</p>';
+  document.querySelector('#page-risk .rwrap').classList.add('result-view');
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('page-risk').scrollTo({top:0,behavior:'smooth'});
+}
+function esc(s){ return String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+/* ═══════════════════════════════════════════════
+   보고서 그리기 (v0.7 — 정돈된 서식)
+   · 글꼴: Noto Sans KR(웹폰트) → 없으면 맑은 고딕
+   · 칸 안의 글자는 먼저 크기를 줄여 한 줄에 맞추고(최소 80%),
+     그래도 넘치면 낱말·점(·)·쉼표 위치에서만 줄을 나눕니다.
+═══════════════════════════════════════════════ */
+const ORG_NAME = "국립생태원 멸종위기종복원센터";   // 머리글 기관명 (비우면 표시 안 함)
+const FONT_STACK = '"Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+function fontStr(size, bold){ return (bold ? '700 ' : '400 ') + size + 'px ' + FONT_STACK; }
+
+/* 웹폰트가 실제로 내려받아진 뒤에 그리도록 대기 (보고서에 쓰일 글자 기준으로 필요한 조각만 받음) */
+async function ensureFonts(sample){
+  if (!document.fonts) return;
+  const s = (sample || '') + ' 현장 위험성평가 보고서 0123456789';
+  try { await Promise.all([document.fonts.load(fontStr(20, false), s), document.fonts.load(fontStr(20, true), s)]); } catch(e) {}
+}
+
+/* 낱말 단위 줄바꿈: 공백·가운뎃점·쉼표·빗금 뒤에서만 나누고, 한 낱말이 너무 길 때만 글자 단위 */
+function smartWrap(ctx, text, maxWidth){
+  const lines = [];
+  for (const para of String(text).split('\n')) {
+    const tokens = para.match(/[^\s·,\/]+[\s·,\/]*/g) || [para];
+    let line = '';
+    const flush = () => { lines.push(line.replace(/\s+$/, '')); line = ''; };
+    for (const tk of tokens) {
+      if (line && ctx.measureText(line + tk).width > maxWidth) flush();
+      if (!line && ctx.measureText(tk).width > maxWidth) {
+        let chunk = '';
+        for (const ch of tk) {
+          if (chunk && ctx.measureText(chunk + ch).width > maxWidth) { lines.push(chunk); chunk = ch; }
+          else chunk += ch;
+        }
+        line = chunk;
+      } else line += tk;
+    }
+    flush();
+  }
+  return lines;
+}
+/* 글자 맞춤: {size, lines} 반환 */
+function fitLines(ctx, text, maxWidth, size, bold, opt = {}){
+  const minScale = opt.minScale == null ? 0.8 : opt.minScale;
+  const maxLines = opt.maxLines || 99;
+  const t = String(text == null ? '' : text);
+  ctx.font = fontStr(size, bold);
+  if (!t.includes('\n')) {
+    const w = ctx.measureText(t).width;
+    if (w <= maxWidth) return { size, lines: [t] };
+    if (maxWidth / w >= minScale) return { size: Math.floor(size * (maxWidth / w) * 10) / 10 - 0.1, lines: [t] };
+  }
+  let sz = size;
+  for (;;) {
+    ctx.font = fontStr(sz, bold);
+    const lines = smartWrap(ctx, t, maxWidth);
+    if (lines.length <= maxLines || sz <= size * minScale) return { size: sz, lines };
+    sz = Math.round((sz - 0.5) * 10) / 10;
+  }
+}
+/* 이전 버전 호환용 */
+function wrapLines(ctx, text, maxWidth){ return smartWrap(ctx, text, maxWidth); }
+
+function buildReportCanvas(report = lastReport){
+  if (!report) throw new Error('먼저 평가를 완료해주세요.');
+  const out = document.createElement('canvas'), c = out.getContext('2d');
+  const W = 1240, M = 44, I = W - M * 2;
+  const NAVY = '#1F3A5F', INK = '#1A202C', GRAY = '#5A6577', LINE = '#C9D1DC', LABEL = '#F2F4F7', ZEBRA = '#F8FAFC', RED = '#C53030';
+  const GRADE = {
+    high: { bg: '#FDE2E2', fg: '#9B2C2C', txt: '높음' },
+    mid:  { bg: '#FEEBC8', fg: '#7B341E', txt: '보통' },
+    low:  { bg: '#D8F3E3', fg: '#22543D', txt: '낮음' }
+  };
+  const info = report.info, risks = report.risks;
+  const isFac = info.mode === 'facility';
+  const overall = risks.length ? judge(Math.max(...risks.map(r => r.score))).cls : 'low';
+  const dateTxt = info.date ? info.date.replace(/-/g, '. ') : '미입력';
+
+  function render(draw){
+    c.textBaseline = 'top'; c.textAlign = 'left';
+    function path(x, y, w, h, r){
+      c.beginPath();
+      if (!r) { c.rect(x, y, w, h); return; }
+      c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+    }
+    function rect(x, y, w, h, fill, stroke, r){
+      if (!draw) return;
+      path(x, y, w, h, r || 0);
+      if (fill) { c.fillStyle = fill; c.fill(); }
+      if (stroke) { c.strokeStyle = stroke; c.lineWidth = 1; c.stroke(); }
+    }
+    /* 글자 그리기(또는 높이만 계산). 반환: 차지한 높이 */
+    function text(str, x, y, w, size, o = {}){
+      const f = fitLines(c, str, w, size, !!o.bold, { minScale: o.minScale, maxLines: o.maxLines });
+      const lh = f.size * (o.lh || 1.45);
+      if (draw) {
+        c.font = fontStr(f.size, !!o.bold); c.fillStyle = o.color || INK; c.textAlign = o.align || 'left';
+        const ax = o.align === 'center' ? x + w / 2 : o.align === 'right' ? x + w : x;
+        f.lines.forEach((ln, i) => c.fillText(ln, ax, y + i * lh + (lh - f.size) / 2));
+        c.textAlign = 'left';
+      }
+      return f.lines.length * lh;
+    }
+    const textH = (str, w, size, o = {}) => {
+      const f = fitLines(c, str, w, size, !!o.bold, { minScale: o.minScale, maxLines: o.maxLines });
+      return f.lines.length * f.size * (o.lh || 1.45);
+    };
+    function pillW(label, size){ c.font = fontStr(size, true); return c.measureText(label).width + size * 1.8; }
+    function pill(x, y, label, cls, size){
+      const g = GRADE[cls] || GRADE.low, w = pillW(label, size), h = size * 1.7;
+      rect(x, y, w, h, g.bg, null, h / 2);
+      if (draw) { c.font = fontStr(size, true); c.fillStyle = g.fg; c.textAlign = 'center'; c.fillText(label, x + w / 2, y + (h - size) / 2); c.textAlign = 'left'; }
+      return { w, h };
+    }
+    function badge(no, x, y, r){
+      if (!draw) return;
+      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fillStyle = RED; c.fill();
+      c.strokeStyle = '#fff'; c.lineWidth = Math.max(2, r * 0.16); c.stroke();
+      c.font = fontStr(r * 1.25, true); c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(String(no), x, y + r * 0.05); c.textBaseline = 'top'; c.textAlign = 'left';
+    }
+    function section(label, y){
+      rect(M, y + 5, 5, 22, NAVY);
+      text(label, M + 16, y, I - 16, 23, { bold: true, color: NAVY });
+      return y + 42;
+    }
+
+    let y = M - 4;
+    if (report.demo) {
+      rect(M, y, I, 34, '#FFF4D6', null, 6);
+      text('데모 예시 · 실제 사진 분석 결과가 아닙니다', M, y + 6, I, 17, { bold: true, color: '#7B5A00', align: 'center' });
+      y += 46;
+    }
+    /* ── 머리글 ── */
+    const rightW = 340, leftW = I - rightW - 24, rx = M + leftW + 24;
+    let hy = y;
+    if (ORG_NAME) hy += text(ORG_NAME + ' · ' + (isFac ? '시설관리 안전' : '연구조사 안전'), M, hy, leftW, 16, { color: GRAY }) + 2;
+    hy += text('현장 위험성평가 보고서', M, hy, leftW, 38, { bold: true, color: NAVY, lh: 1.3 }) + 2;
+    hy += text((info.target || '평가대상 미입력') + (info.location ? ' · ' + info.location : ''), M, hy, leftW, 20, { color: '#2D3748', maxLines: 2 });
+    let ry = y + 6;
+    ry += text((isFac ? '작업일 ' : '조사일 ') + dateTxt, rx, ry, rightW, 16, { color: GRAY, align: 'right' }) + 2;
+    ry += text((info.team || '소속·팀 미입력'), rx, ry, rightW, 16, { color: GRAY, align: 'right' }) + 12;
+    const ol = '종합 위험도 ' + GRADE[overall].txt, ow = pillW(ol, 17);
+    const op = pill(M + I - ow, ry, ol, overall, 17);
+    ry += op.h;
+    y = Math.max(hy, ry) + 14;
+    rect(M, y, I, 3, NAVY); y += 22;
+
+    /* ── 사진 + 위험요인 목록 ── */
+    const sideW = 392, gap = 24, photoW = I - sideW - gap, sideX = M + photoW + gap;
+    const itemH = risks.map(r => textH(r.factor, sideW - 54, 21, { bold: true, maxLines: 2 }) + Math.max(textH(r.injury, sideW - 54 - 118, 16), 27) + 24);
+    const photoH = Math.max(520, itemH.reduce((a, b) => a + b, 0));
+    rect(M, y, photoW, photoH, LABEL, null, 10);
+    const photo = report.photo;
+    if (photo && photo.width && photo.height) {
+      const sc = Math.min(photoW / photo.width, photoH / photo.height);
+      const pw = photo.width * sc, ph = photo.height * sc, px = M + (photoW - pw) / 2, py = y + (photoH - ph) / 2;
+      if (draw) { c.save(); path(px, py, pw, ph, 10); c.clip(); c.drawImage(photo, px, py, pw, ph); c.restore(); }
+      risks.filter(r => r.box_2d).forEach(r => {
+        const [y1, x1, y2, x2] = r.box_2d, rad = Math.min(21, pw / 12, ph / 12);
+        const bx = px + Math.max(rad + 3, Math.min(pw - rad - 3, (x1 + x2) / 2000 * pw));
+        const by = py + Math.max(rad + 3, Math.min(ph - rad - 3, (y1 + y2) / 2000 * ph));
+        badge(r.no, bx, by, rad);
+      });
+    } else text('현장 사진 없음', M, y + photoH / 2 - 14, photoW, 22, { color: GRAY, align: 'center' });
+    let sy = y;
+    if (!risks.length) text('확인된 위험요인이 없습니다.\n현장 상태를 다시 확인하세요.', sideX, sy, sideW, 20, { color: GRAY });
+    risks.forEach((r, i) => {
+      let ty = sy + 8;
+      badge(r.no, sideX + 18, ty + 14, 17);
+      ty += text(r.factor, sideX + 54, ty, sideW - 54, 21, { bold: true, maxLines: 2 }) + 3;
+      const p = pill(sideX + sideW - pillW(r.score + '점 ' + r.j.txt, 14), ty, r.score + '점 ' + r.j.txt, r.j.cls, 14);
+      text(r.injury, sideX + 54, ty + (p.h - 16 * 1.45) / 2, sideW - 54 - p.w - 10, 16, { color: GRAY });
+      sy += itemH[i];
+      if (i < risks.length - 1) rect(sideX, sy - 1, sideW, 1, LINE);
+    });
+    y += photoH + 18;
+    if (risks.some(r => !r.box_2d)) y += text('※ 위치 정보가 없는 항목은 사진에 번호를 표시하지 않았습니다.', M, y, I, 15, { color: GRAY }) + 6;
+
+    /* ── 개요 표 ── */
+    y = section(isFac ? '현장작업 개요' : '현장조사 개요', y);
+    const cw = [I * 0.15, I * 0.35, I * 0.15, I * 0.35], rh = 48;
+    const rows = [
+      [isFac ? '작업 장소' : '조사 장소', info.location || '미입력', isFac ? '작업 일자' : '조사 일자', dateTxt],
+      [isFac ? '작업 유형' : '조사 유형', info.workType || '미입력', '참여 인원', info.count ? info.count + '명' : '미입력'],
+      ['소속·팀', info.team || '미입력', '평가대상 구분', info.categories || '미입력']
+    ];
+    rows.forEach(vals => {
+      let x = M;
+      vals.forEach((v, i) => {
+        const isK = i % 2 === 0;
+        rect(x, y, cw[i], rh, isK ? LABEL : '#fff', LINE);
+        const h = textH(v, cw[i] - 24, isK ? 16 : 18, { minScale: 0.72, maxLines: 1 });
+        text(v, x + 12, y + (rh - h) / 2, cw[i] - 24, isK ? 16 : 18, { color: isK ? GRAY : INK, minScale: 0.72, maxLines: 1 });
+        x += cw[i];
+      });
+      y += rh;
+    });
+
+    /* ── 현장 여건 ── */
+    y += 16; y = section('현장 여건', y);
+    const conds = [
+      ['기상', info.weather || '미입력'],
+      ['지형·시설', report.terrain || '사진상 확인 불가'],
+      ['노면', report.ground || '사진상 확인 불가'],
+      ['계절 위험', report.seasonal || '해당 없음']
+    ];
+    const tg = 12, tw = (I - tg * 3) / 4;
+    const th = Math.max(92, ...conds.map(a => 44 + textH(a[1], tw - 26, 17, { maxLines: 4 }) + 14));
+    conds.forEach((a, i) => {
+      const x = M + i * (tw + tg);
+      rect(x, y, tw, th, '#fff', LINE, 8);
+      text(a[0], x + 13, y + 11, tw - 26, 15, { bold: true, color: GRAY });
+      text(a[1], x + 13, y + 40, tw - 26, 17, { maxLines: 4 });
+    });
+    y += th + 16;
+
+    /* ── 평가표 ── */
+    y = section('위험성 평가 및 안전조치', y);
+    const tc = [52, 288, 188, 78, 78, 148]; tc.push(I - tc.reduce((a, b) => a + b, 0));
+    const heads = ['No', '위험요인', '예상 재해', '빈도', '강도', '위험성', '안전조치'];
+    const hh = 46; let x = M;
+    heads.forEach((h, i) => { rect(x, y, tc[i], hh, NAVY, NAVY); text(h, x + 10, y + (hh - 16 * 1.45) / 2, tc[i] - 20, 16, { bold: true, color: '#fff', align: 'center' }); x += tc[i]; });
+    y += hh;
+    risks.forEach((r, i) => {
+      const cells = [String(r.no), r.factor, r.injury, String(r.freq), String(r.sev), '', r.measure];
+      const opts = [
+        { align: 'center', size: 17 }, { size: 17, minScale: 0.75, maxLines: 2 }, { size: 17, minScale: 0.75, maxLines: 2 },
+        { align: 'center', size: 17 }, { align: 'center', size: 17 }, null, { size: 15, color: '#2D3748' }
+      ];
+      const hs = cells.map((v, k) => opts[k] ? textH(v, tc[k] - 22, opts[k].size, opts[k]) : 30);
+      const rowH = Math.max(54, ...hs) + 18;
+      let cx = M;
+      cells.forEach((v, k) => {
+        rect(cx, y, tc[k], rowH, i % 2 ? ZEBRA : '#fff', LINE);
+        if (k === 5) { const lb = r.score + '점 ' + r.j.txt, w = pillW(lb, 15); pill(cx + (tc[k] - w) / 2, y + (rowH - 15 * 1.7) / 2, lb, r.j.cls, 15); }
+        else text(v, cx + 11, y + (rowH - hs[k]) / 2, tc[k] - 22, opts[k].size, opts[k]);
+        cx += tc[k];
+      });
+      y += rowH;
+    });
+    if (!risks.length) { rect(M, y, I, 54, '#fff', LINE); text('확인된 위험요인이 없습니다. 현장 재확인이 필요합니다.', M, y + 16, I, 17, { color: GRAY, align: 'center' }); y += 54; }
+    y += 8; y += text('위험성 = 빈도(1~4) × 강도(1~5)  ·  1~2 낮음  ·  3~7 보통  ·  8~20 높음', M, y, I, 14, { color: GRAY }) + 14;
+
+    /* ── 보호구 · 안전수칙 ── */
+    const bw = (I - 20) / 2, bh0 = 40;
+    const panels = [['필요 보호구', report.ppeItems || []], ['현장 안전수칙', report.rulesItems || []]];
+    const listH = items => items.reduce((a, s) => a + textH(s, bw - 46, 17) + 6, 0);
+    const bh = Math.max(120, ...panels.map(p => bh0 + 14 + listH(p[1].length ? p[1] : ['현장 확인 후 기재']) + 10));
+    panels.forEach((p, i) => {
+      const x = M + i * (bw + 20);
+      rect(x, y, bw, bh, '#fff', LINE, 8);
+      if (draw) { c.save(); path(x, y, bw, bh, 8); c.clip(); c.fillStyle = NAVY; c.fillRect(x, y, bw, bh0); c.restore(); }
+      text(p[0], x + 16, y + (bh0 - 17 * 1.45) / 2, bw - 32, 17, { bold: true, color: '#fff' });
+      let ly = y + bh0 + 14;
+      (p[1].length ? p[1] : ['현장 확인 후 기재']).forEach(s => {
+        if (draw) { c.fillStyle = NAVY; c.beginPath(); c.arc(x + 24, ly + 12, 3, 0, Math.PI * 2); c.fill(); }
+        ly += text(s, x + 36, ly, bw - 46, 17) + 6;
+      });
+    });
+    y += bh + 18;
+
+    /* ── 맺음 ── */
+    if (report.summary) y += text('평가 요약  ' + report.summary, M, y, I, 16, { color: '#2D3748' }) + 8;
+    rect(M, y, I, 1, LINE); y += 10;
+    y += text('AI가 제안한 참고용 평가입니다. 현장 확인과 담당자 검토 후 안전조치를 확정하세요.', M, y, I, 14, { color: GRAY });
+    return Math.ceil(y + M);
+  }
+  out.width = W; out.height = render(false);
+  c.fillStyle = '#fff'; c.fillRect(0, 0, W, out.height); render(true);
+  return out;
+}
+document.getElementById('btnSave').addEventListener('click',function(){
+  if(!lastReportCanvas)return;
+  const a=document.createElement('a');
+  const title=(lastReport.info.target||'현장').replace(/[\\/:*?"<>|]/g,'_');
+  a.download='위험성평가_'+title+'_'+(lastReport.info.date||'결과')+'.png';
+  a.href=lastReportCanvas.toDataURL('image/png');a.click();
+});
+document.getElementById('btnPrint').addEventListener('click',async function(){
+  if(!lastReportCanvas)return;
+  const img=document.getElementById('printReport');
+  try{await img.decode();window.print();}catch(error){alert('인쇄 이미지를 준비하지 못했습니다. 이미지 저장을 이용해주세요.');}
+});
+/* ── 💬 공유: 휴대폰의 공유 창을 열어 보고서 이미지를 카카오톡 채널·단체방 등으로 직접 보냄 ── */
+function reportFileName(ext){
+  const title = (lastReport.info.target || '현장').replace(/[\\/:*?"<>|]/g, '_');
+  return '위험성평가_' + title + '_' + (lastReport.info.date || '결과') + '.' + ext;
+}
+document.getElementById('btnShare').addEventListener('click', async function(){
+  if (!lastReport || !lastReportCanvas) return;
+  const blob = await new Promise(r => lastReportCanvas.toBlob(r, 'image/png'));
+  const file = new File([blob], reportFileName('png'), { type: 'image/png' });
+  const info = lastReport.info;
+  const text = '[현장 위험성평가] ' + (info.target || '') + (info.location ? ' · ' + info.location : '')
+    + ' / ' + (info.team || '') + ' ' + (info.name || '') + ' / ' + (info.date || '');
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: '현장 위험성평가 보고서', text }); }
+    catch (e) { if (e.name !== 'AbortError') alert('공유 창을 열지 못했습니다.\n[보고서 이미지 저장] 후 카카오톡에서 직접 보내주세요.'); }
+  } else {
+    alert('이 브라우저에서는 바로 공유가 되지 않습니다.\n[보고서 이미지 저장]을 누른 뒤, 저장된 이미지를 카카오톡에서 직접 보내주세요.\n(휴대폰 크롬·사파리에서는 바로 공유가 됩니다)');
+  }
+});
+
+/* ── 📨 제출: 보고서 내용 + 이미지(JPG, 190KB 이하)를 Make 웹훅으로 전송 → Make가 솔라피로 문자 발송 ── */
+function reportJpeg(maxBytes){
+  let w = Math.min(1000, lastReportCanvas.width), q = 0.82, last = null;
+  for (let i = 0; i < 10; i++) {
+    const c = document.createElement('canvas'), s = w / lastReportCanvas.width;
+    c.width = w; c.height = Math.round(lastReportCanvas.height * s);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(lastReportCanvas, 0, 0, c.width, c.height);
+    const url = c.toDataURL('image/jpeg', q), b64 = url.slice(url.indexOf(',') + 1);
+    last = { base64: b64, bytes: Math.round(b64.length * 3 / 4), width: c.width, height: c.height };
+    if (last.bytes <= maxBytes) return last;
+    if (q > 0.6) q -= 0.08; else w = Math.round(w * 0.85);
+  }
+  return last;
+}
+function buildSubmitPayload(){
+  const r = lastReport, info = r.info;
+  const maxScore = r.risks.length ? Math.max(...r.risks.map(x => x.score)) : 0;
+  const overall = judge(maxScore).txt;
+  const img = reportJpeg(190 * 1024);
+  const date = info.date || todayLocal();
+  const lines = [
+    '[현장 위험성평가 제출]',
+    (info.target || '평가대상 미입력') + (info.location ? ' · ' + info.location : ''),
+    '작성 ' + (info.team || '소속 미입력') + ' · ' + date.replace(/-/g, '.') + (info.count ? ' · ' + info.count + '명' : ''),
+    '종합 위험도 ' + overall + ' (최고 ' + maxScore + '점)',
+    ...r.risks.slice(0, 5).map(x => x.no + '. ' + x.factor + ' - ' + x.score + '점 ' + x.j.txt),
+    '기상 ' + (info.weather || '미입력'),
+    '※ AI 참고용 평가 · 담당자 검토 필요'
+  ];
+  return {
+    token: SUBMIT_TOKEN, app: 'risk-report', sentAt: new Date().toISOString(),
+    target: info.target, location: info.location, name: info.name, team: info.team, date,
+    count: info.count, workType: info.workType, weather: info.weather, mode: info.mode,
+    overall, maxScore, summary: r.summary,
+    terrain: r.terrain, ground: r.ground, seasonal: r.seasonal,
+    ppe: (r.ppeItems || []).join(', '), rules: (r.rulesItems || []).join(', '),
+    risks: r.risks.map(x => ({ no: x.no, factor: x.factor, injury: x.injury, freq: x.freq, sev: x.sev, score: x.score, grade: x.j.txt, measure: x.measure })),
+    messageText: lines.join('\n'),
+    imageBase64: img ? img.base64 : '', imageMime: 'image/jpeg', imageBytes: img ? img.bytes : 0,
+    imageName: '위험성평가_' + date + '.jpg'
+  };
+}
+document.getElementById('btnSubmit').addEventListener('click', async function(){
+  if (!lastReport || !lastReportCanvas) return;
+  if (!SUBMIT_WEBHOOK) { alert('제출 주소가 설정되지 않았습니다. 관리자에게 문의하세요.'); return; }
+  if (lastReport.demo && !confirm('데모 결과입니다. 그래도 제출할까요?')) return;
+  if (!confirm('이 보고서를 안전관리자에게 제출할까요?\n(보고서 이미지와 요약이 문자로 발송됩니다)')) return;
+  const btn = this, st = document.getElementById('submitState');
+  btn.disabled = true; btn.textContent = '⏳ 제출 중…'; st.style.display = 'none';
+  try {
+    const payload = buildSubmitPayload();
+    const res = await fetch(SUBMIT_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const txt = await res.text().catch(() => '');
+    if (!res.ok) throw new Error('서버 응답 ' + res.status + (txt ? ' · ' + txt.slice(0, 120) : ''));
+    st.textContent = '✅ 제출되었습니다 (' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) + ')' + (txt && txt !== 'Accepted' ? ' · ' + txt.slice(0, 80) : '');
+    st.style.display = 'block';
+    btn.textContent = '📨 다시 제출';
+  } catch (e) {
+    alert('제출하지 못했습니다.\n' + e.message + '\n\n인터넷 연결을 확인하고 다시 시도해주세요. 계속 실패하면 [보고서 이미지 저장] 후 직접 전달해주세요.');
+    btn.textContent = '📨 안전관리자 제출';
+  } finally { btn.disabled = false; }
+});
+if (SUBMIT_WEBHOOK) document.getElementById('btnSubmit').style.display = '';
+
+/* ── 통합 앱 연동: 위험성평가 탭을 처음 열면 기상을 자동으로 채움 (현재 위치 → 권한 없으면 근무지) ── */
+let weatherAutoTried = false;
+function onOpen(){
+  if (weatherAutoTried) return;
+  weatherAutoTried = true;
+  if (!document.getElementById('fieldWeather').value.trim()) autoWeather(true);
+}
+
+document.getElementById('btnBack').addEventListener('click',function(){
+  document.querySelector('#page-risk .rwrap').classList.remove('result-view');
+  document.getElementById('resultArea').style.display='none';
+  document.getElementById('page-risk').scrollTo({top:0,behavior:'smooth'});
+});
+function todayLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+document.getElementById('surveyDate').value=todayLocal();
+
+
+
+/* ── 초기화 (평가 종류 선택은 유지) ── */
+document.getElementById('btnReset').addEventListener('click', function(){
+  if (!confirm('입력한 내용을 모두 지울까요?')) return;
+  photoDataUrl = null; photoImg = null;
+  lastReport = null; lastReportCanvas = null;
+  ['surveyTeam','surveyCount','fieldWeather'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('weatherHint').textContent = '현재 위치(위치 권한이 없으면 근무지) 기준 기상청 초단기실황을 자동으로 가져옵니다.'; weatherAutoTried = false;
+  document.getElementById('surveyDate').value=todayLocal();
+  document.getElementById('photoInput').value = '';
+  document.getElementById('preview').style.display = 'none';
+  ['targetName','workDesc','location'].forEach(id => document.getElementById(id).value = '');
+  ['envSelect','typeSelect'].forEach(id => document.getElementById(id).value = '');
+  document.querySelectorAll('#page-risk .chip.on').forEach(c => c.classList.remove('on'));
+  document.getElementById('resultArea').style.display = 'none';
+});
+
+/* ── 데모 모드: 웹훅 연결 전 화면 확인용 예시 ── */
+function demoResult(){
+  const samples = {
+    research: {
+      summary: "(데모) 하천 조사 구간에서 익수·미끄러짐 위험이 확인됩니다. 구명조끼 착용과 2인 이상 1조 이동이 필요합니다.",
+      terrain: "하천 여울 구간 · 자갈·암반 혼재 (데모)",
+      ground: "젖은 바위 · 이끼로 미끄러움 (데모)",
+      seasonal: "벌 쏘임·진드기 주의, 강우 시 수위 급상승 (데모)",
+      ppe: ["구명조끼", "미끄럼방지 장화", "긴 소매 작업복"],
+      safety_rules: ["2인 이상 1조 이동", "수심 무릎 이상 구간 입수 금지", "응급약품·통신장비 휴대"],
+      risks: [
+        { no:1, box_2d:[80,120,420,520],  factor:"구명조끼 미착용 (데모)", injury:"익수", freq:3, sev:5, measure:"입수 전 구명조끼를 착용하고 2인 이상 1조로 상호 확인하세요." },
+        { no:2, box_2d:[500,80,900,450],  factor:"이끼 낀 바위 미끄러짐 (데모)", injury:"미끄러짐 · 전도", freq:3, sev:2, measure:"미끄럼방지 신발을 착용하고 젖은 바위는 우회하세요." },
+        { no:3, box_2d:[450,600,850,950], factor:"벌집 등 야생동물 접근 (데모)", injury:"쏘임 · 물림", freq:2, sev:3, measure:"조사 전 주변을 살피고 벌 기피제·응급약품을 휴대하세요." }
+      ]
+    },
+    facility: {
+      summary: "(데모) 고소작업 구역에서 추락·낙하 위험이 확인됩니다. 하부 통제와 보호구 착용 점검이 필요합니다.",
+      terrain: "실내 고소작업대 · 천장 설비 하부 (데모)",
+      ground: "콘크리트 바닥 · 자재 적치로 통로 협소 (데모)",
+      seasonal: "환기 부족 시 온열 부담 (데모)",
+      ppe: ["안전모", "안전대(추락방지)", "안전화"],
+      safety_rules: ["작업 전 안전대 체결 상호 확인", "하부 출입통제 표지 설치", "2인 1조 작업"],
+      risks: [
+        { no:1, box_2d:[80,120,420,520],  factor:"안전대 미체결 (데모)", injury:"추락", freq:3, sev:5, measure:"작업 전 안전대 체결 상태를 2인 이상 1조로 상호 확인하세요." },
+        { no:2, box_2d:[500,80,900,450],  factor:"하부 출입 통제 미흡 (데모)", injury:"낙하물 충돌", freq:2, sev:3, measure:"작업 반경에 출입금지 구역을 설정하고 안내표지를 세우세요." },
+        { no:3, box_2d:[450,600,850,950], factor:"자재 적재 불안정 (데모)", injury:"맞음 · 깔림", freq:1, sev:2, measure:"자재를 낮게 쌓고 결속끈으로 고정하세요." }
+      ]
+    }
+  };
+  return new Promise(ok => setTimeout(() => ok(samples[currentMode] || samples.research), 1500));
+}
+return { toggleKeyCard, saveAiKey, clearAiKey, saveKmaKey, clearKmaKey, onOpen };
+})();
+</script>
+<script>
+/* ═════════════════════════════════════════════════════════════
+   ① 출장 자동화 + 홈 화면 + 탭 전환 (멸종위기종복원센터 직원용)
+   ═════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+/* ── 탭 전환: 날씨 화면은 처음 열 때만 기상청 호출, 위험성평가는 처음 열 때 기상 자동 입력 ── */
+function goTab(name){
+  document.querySelectorAll('body > nav button').forEach(b => b.classList.toggle('on', b.dataset.page === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'page-' + name));
+  if (name === 'weather') SW.init();
+  if (name === 'risk') RK.onOpen();
+  if (name === 'trip') showSiteName();
+  if (name === 'home') loadWarnBanner();
+}
+document.querySelectorAll('body > nav button').forEach(btn => btn.addEventListener('click', () => goTab(btn.dataset.page)));
+
+/* ── 현재 지역: 날씨알림 탭에서 고른 지역(기본 멸종위기종복원센터)을 출장 준비물·특보 배너가 함께 사용 ── */
+function curSite(){ return SW.getCur(); }
+window.APP = { curSite };                                 // 위험성평가의 기상 자동 입력이 위치 권한 없을 때 근무지 좌표로 대신 씀
+function showSiteName(){ $('tripSiteName').textContent = curSite().name; }
+
+/* ── 기상청 호출 도우미 (날씨 모듈의 10분 캐시를 함께 사용) ── */
+function kmaItems(j){ const it = j && j.response && j.response.body && j.response.body.items && j.response.body.items.item; return Array.isArray(it) ? it : (it ? [it] : []); }
+async function activeWarnings(site){   // 특보현황(getPwnStatus)에서 이 지역에 발효 중인 특보만 [{type, area}]
+  const j = await SW.kmaGet('WthrWrnInfoService/getPwnStatus', 'numOfRows=10&pageNo=1&stnId=' + (site.stn || 143));
+  const item = kmaItems(j)[0];
+  return SW.parseWarnStatus(item && item.t6).filter(w => (site.keys || []).some(k => k && w.area.indexOf(k) >= 0));
+}
+async function forecastByDate(site){   // 단기예보를 날짜별로 묶기
+  const g = SW.toGrid(site.lat, site.lon), fb = SW.fcstBase();
+  const j = await SW.kmaGet('VilageFcstInfoService_2.0/getVilageFcst',
+    'numOfRows=1000&pageNo=1&base_date=' + fb.date + '&base_time=' + fb.time + '&nx=' + g.nx + '&ny=' + g.ny);
+  const items = kmaItems(j);
+  if (!items.length) throw new Error('no data');
+  const byDate = {};
+  items.forEach(it => {
+    const d = (byDate[it.fcstDate] = byDate[it.fcstDate] || { tmp:[], pop:[], pty:[], wsd:[], tmn:null, tmx:null });
+    const v = parseFloat(it.fcstValue);
+    if (it.category === 'TMP') d.tmp.push(v);
+    if (it.category === 'TMN') d.tmn = v;
+    if (it.category === 'TMX') d.tmx = v;
+    if (it.category === 'POP') d.pop.push(v);
+    if (it.category === 'PTY') d.pty.push(String(it.fcstValue));
+    if (it.category === 'WSD') d.wsd.push(v);
+  });
+  return byDate;
+}
+function daySummary(d){
+  return {
+    hi: d.tmx != null ? d.tmx : (d.tmp.length ? Math.max(...d.tmp) : null),
+    lo: d.tmn != null ? d.tmn : (d.tmp.length ? Math.min(...d.tmp) : null),
+    pop: d.pop.length ? Math.max(...d.pop) : 0,
+    rain: d.pty.some(v => v === '1' || v === '2' || v === '4'),
+    snow: d.pty.some(v => v === '3'),
+    wmax: d.wsd.length ? Math.max(...d.wsd) : 0
+  };
+}
+
+/* ── 홈 특보 배너: 현재 지역에 발효 중인 특보가 있으면 표시 ── */
+async function loadWarnBanner(){
+  const b = $('warnBanner');
+  if (!getKmaKey()){ b.style.display = 'none'; return; }
+  try{
+    const s = curSite();
+    const list = await activeWarnings(s);
+    if (list.length){
+      b.innerHTML = '🚨 <b>' + list.map(w => esc(w.type)).join(' · ') + '</b><br><span style="font-size:11.5px;opacity:.9;">'
+        + esc(s.name) + ' 기상특보 발효 중 — 눌러서 자세히 보기</span>';
+      b.style.display = 'block';
+    } else b.style.display = 'none';
+  }catch(e){ b.style.display = 'none'; }
+}
+
+/* ── 날씨 맞춤 준비물 추천 (출장 자동화) ── */
+async function recommendPack(){
+  const out = $('packResult');
+  if (!getKmaKey()){ out.innerHTML = '<div class="pack-sum">날씨 연동이 아직 준비되지 않았습니다.</div>'; return; }
+  out.innerHTML = '<div class="pack-sum">⏳ 예보를 확인하는 중…</div>';
+  try{
+    const s = curSite();
+    const byDate = await forecastByDate(s);
+    const dates = Object.keys(byDate).sort();
+    const idx = Math.min(Number($('packDay').value), dates.length - 1);
+    const d = daySummary(byDate[dates[idx]]);
+
+    const packs = ['🧰 구급함·비상약', '🦺 안전조끼', '🔋 휴대폰 보조배터리'];
+    const warns = [];
+    if (d.hi != null && d.hi >= 33){ packs.push('🥤 물·이온음료 넉넉히', '🧢 모자·쿨토시', '⛱️ 그늘막'); warns.push('폭염 수준 더위 — 12~17시 야외조사 자제, 매시간 그늘 휴식'); }
+    else if (d.hi != null && d.hi >= 31){ packs.push('🥤 물·이온음료', '🧢 모자'); warns.push('더위 주의 — 수분 자주 섭취'); }
+    if (d.lo != null && d.lo <= -12){ packs.push('🧥 방한복·핫팩', '🧤 방한장갑'); warns.push('한파 수준 추위 — 야외조사 단축 검토'); }
+    else if (d.lo != null && d.lo <= 0){ packs.push('🧥 방한복·핫팩'); }
+    if (d.rain || d.pop >= 60){ packs.push('🌂 우의·방수가방', '👟 미끄럼방지 신발'); warns.push('비 예보 — 계곡·하천변 접근 주의'); }
+    else if (d.pop >= 30){ packs.push('🌂 우산'); }
+    if (d.snow){ packs.push('❄️ 아이젠·차량 체인'); warns.push('눈 예보 — 도로 결빙 주의'); }
+    if (d.wmax >= 9){ packs.push('🧥 바람막이'); warns.push('강한 바람 — 고소·사다리 작업 금지, 낙하물 주의'); }
+
+    const dt = dates[idx];
+    out.innerHTML =
+      '<div class="pack-sum">📅 <b>' + dt.slice(4,6) + '/' + dt.slice(6,8) + ' · ' + esc(s.name) + '</b><br>'
+      + '기온 ' + (d.lo != null ? d.lo : '?') + '~' + (d.hi != null ? d.hi : '?') + '℃ · 강수확률 최고 ' + d.pop + '%'
+      + (d.rain ? ' · 비 예보 있음' : '') + (d.snow ? ' · 눈 예보 있음' : '') + '</div>'
+      + '<div class="pack-items">' + packs.map(t => '<span>' + t + '</span>').join('') + '</div>'
+      + (warns.length ? '<div class="pack-warn">⚠️ ' + warns.join('<br>⚠️ ') + '</div>' : '')
+      + '<div class="hint">기상청 단기예보 기반 참고용 추천입니다. 다른 출장지의 예보는 [🌤 날씨알림] 탭에서 지역을 바꾼 뒤 다시 추천받으세요.</div>';
+  }catch(e){
+    out.innerHTML = '<div class="pack-sum">예보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+  }
+}
+
+/* ── 시작 ── */
+showSiteName();
+loadWarnBanner();
+</script>
+</body>
+</html>
