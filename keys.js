@@ -9,7 +9,7 @@
      https://jipjuin29-dotcom.github.io/*  를 꼭 추가해 두세요.
 ═══════════════════════════════════════════════════════ */
 window.APP_KEYS = {
-  geminiA: "AQ.Ab8RN6IOv_orUCjZBEE3C_0ZR-",
-  geminiB: "EUD70JVK4SM_l2rF8X3NpLng",
+  geminiA: "AQ.Ab8RN6J-4alP_JJyvP--nKjI",
+  geminiB: "SHqsfZNPS9fOY61W63JjZnbMTw",
   kma: "GDewDfD3UhYeNNlThaTbdu%2BYc8iCMapNVSlN9wblZeLXDLjOttYrPE3AY7YhEIRQ7E7B6r7a68h4rwUF8hsWFw%3D%3D"
 };
