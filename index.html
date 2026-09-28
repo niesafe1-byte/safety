@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>국립생태원 안전도우미</title>
 <meta name="theme-color" content="#1a365d">
+<!-- Gemini 키의 "웹사이트 제한"이 어떤 형식(주소/* 또는 주소/safety/*)이어도 맞도록 요청에 전체 주소를 실어 보냄 -->
+<meta name="referrer" content="no-referrer-when-downgrade">
 <!-- 홈 화면에 추가(앱처럼 실행)용 정보 — 같은 폴더의 manifest.json·아이콘 사용 -->
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="icon-192.png">
@@ -3074,6 +3076,20 @@ async function recommendPack(){
 /* ── 시작 ── */
 showSiteName();
 loadWarnBanner();
+
+/* ── 바로가기 주소 (카카오톡 챗봇 메뉴 버튼용)
+   ?tab=trip → 출장 자동화 / ?tab=risk → AI 위험성평가 / ?tab=weather → 날씨알림 / 없으면 홈
+   #trip, #risk, #weather 형식도 됨. 한글(?tab=출장 · 위험성평가 · 날씨)도 허용 ── */
+const TAB_ALIAS = { home:'home', trip:'trip', risk:'risk', weather:'weather',
+  '출장':'trip', '출장자동화':'trip', '위험성평가':'risk', '평가':'risk', '날씨':'weather', '날씨알림':'weather' };
+function tabFromUrl(){
+  let p = new URLSearchParams(location.search).get('tab') || '';
+  if (!p && location.hash) { try { p = decodeURIComponent(location.hash.slice(1)); } catch(e) { p = location.hash.slice(1); } }
+  return TAB_ALIAS[String(p).trim().toLowerCase()] || TAB_ALIAS[String(p).trim()] || null;
+}
+function applyUrlTab(){ const t = tabFromUrl(); if (t) goTab(t); }
+window.addEventListener('hashchange', applyUrlTab);
+applyUrlTab();
 </script>
 </body>
 </html>
