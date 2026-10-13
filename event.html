@@ -836,7 +836,7 @@ function openTally(formId, extra, onDone){
   loadTally().then(function(){
     var fired = false;
     window.Tally.openPopup(formId, {
-      layout:'modal', width:520, autoClose:1500,
+      layout:'modal', width:520, autoClose:1500, hideTitle:true,
       hiddenFields: Object.assign({ code:state.code, name:state.name, dept:state.dept, last4:state.last4 }, extra || {}),
       onSubmit: function(){ if (fired) return; fired = true; setTimeout(onDone, 1700); }
     });
