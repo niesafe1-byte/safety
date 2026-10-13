@@ -1,0 +1,28 @@
+name: sync-records
+
+# 구글 시트 '공개' 탭(code, mission)을 10분마다 records.csv로 복사합니다.
+# 기관망에서는 docs.google.com이 막혀 있어서, 사이트가 이 사본을 읽어 도장을 복원합니다.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download published CSV
+        run: |
+          curl -sSL -o records.tmp "https://docs.google.com/spreadsheets/d/e/2PACX-1vSs079KDn1BWyvgM4hxFMXk6q1r8D8lypT70oLcOdAkvXyMAkCy53ZnScyqq5xOo0UdS3aQW5-jS3nF/pub?gid=752852994&single=true&output=csv"
+          head -c 200 records.tmp | grep -qi "code" || { echo "CSV not valid, skip"; exit 0; }
+          if [ -f records.csv ] && cmp -s records.tmp records.csv; then echo "no change"; exit 0; fi
+          mv records.tmp records.csv
+          git config user.name "records-bot"
+          git config user.email "records-bot@users.noreply.github.com"
+          git add records.csv
+          git commit -m "update records.csv"
+          git push
