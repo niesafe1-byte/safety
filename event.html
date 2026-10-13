@@ -835,10 +835,26 @@ function openTally(formId, extra, onDone){
   toast('제출 서식을 여는 중입니다…', 1500);
   loadTally().then(function(){
     var fired = false;
+    function done(){ if (fired) return; fired = true; window.removeEventListener('message', onMsg); toast('제출되었습니다!'); setTimeout(onDone, 1300); }
+    /* Tally가 보내는 제출 완료 신호를 직접도 듣습니다 (onSubmit이 안 올 때 대비) */
+    function onMsg(e){
+      try {
+        var d = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
+        if (d && d.event === 'Tally.FormSubmitted') {
+          done(); /* 창은 한 번에 하나만 열리므로 어떤 서식이든 제출 신호면 완료 처리 */
+        }
+      } catch(err){}
+    }
+    window.addEventListener('message', onMsg);
     window.Tally.openPopup(formId, {
       layout:'modal', width:520, autoClose:1500, hideTitle:true,
       hiddenFields: Object.assign({ code:state.code, name:state.name, dept:state.dept, last4:state.last4 }, extra || {}),
-      onSubmit: function(){ if (fired) return; fired = true; setTimeout(onDone, 1700); }
+      onSubmit: function(){ done(); },
+      onClose: function(){
+        window.removeEventListener('message', onMsg);
+        /* 제출 신호를 못 받고 창이 닫힌 경우: 본인 확인 후 도장 (당첨자 캡처는 담당자가 따로 확인) */
+        if (!fired) setTimeout(function(){ if (!fired && confirm('제출을 완료하셨나요?\n완료했다면 [확인]을 눌러 도장을 받으세요.')) done(); }, 300);
+      }
     });
   }).catch(function(){ alert('제출 서식을 불러오지 못했습니다.\n인터넷 연결을 확인하고 다시 시도해 주세요.'); });
 }
