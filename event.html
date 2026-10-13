@@ -542,7 +542,7 @@ var CFG = Object.assign({
   periodText: '2026. 10. 00.(0) ~ 00. 00.(0)',
   startDate: '', endDate: '',
   appUrl: './',
-  tallyBingoForm: '', tallyIdeaForm: '', recordsCsvUrl: '',
+  tallyBingoForm: '', tallyIdeaForm: '', recordsCsvUrl: '', recordsMirror: '',
   contact: '안전관리 담당자에게 문의해 주세요.',
   giftBingo: '추첨으로 3만원 상당 모바일 기프티콘 · 40명',
   giftIdea: '의견 반영자 중 10명 + 그 외 참여자 중 10명',
@@ -707,7 +707,7 @@ function render(animateLines){
   var me = $('meBar');
   if (state.code) {
     me.innerHTML = '<span><b>' + esc(state.name) + '</b> 님 · ' + esc(state.dept) + '<br><small style="color:var(--b2);font-weight:700">참여번호 ' + pno() + '</small></span><span>' +
-      (CFG.recordsCsvUrl ? '<button class="link-btn" id="btnSync" type="button">기록 불러오기</button>' : '') +
+      ((CFG.recordsCsvUrl || CFG.recordsMirror) ? '<button class="link-btn" id="btnSync" type="button">기록 불러오기</button>' : '') +
       '<button class="link-btn" id="btnEdit" type="button">정보 수정</button></span>';
     $('btnEdit').onclick = function(){ openReg(); };
     if ($('btnSync')) $('btnSync').onclick = function(){ syncRecords(true); };
@@ -769,22 +769,33 @@ $('btnRegSave').addEventListener('click', function(){
 
 /* ───────── 기록 불러오기 (공개 시트의 코드·미션 목록) ───────── */
 function syncRecords(manual){
-  if (!CFG.recordsCsvUrl || !state.code) { return Promise.resolve(0); }
-  var url = CFG.recordsCsvUrl + (CFG.recordsCsvUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
-  return fetch(url, { cache:'no-store' }).then(function(r){ if (!r.ok) throw new Error(r.status); return r.text(); }).then(function(txt){
-    var rows = txt.split(/\r?\n/).map(function(l){ return l.split(',').map(function(c){ return c.replace(/^"|"$/g,'').trim(); }); });
-    var head = (rows[0] || []).map(function(c){ return c.toLowerCase(); });
-    var ci = head.indexOf('code'), mi = head.indexOf('mission'); if (ci < 0 || mi < 0) { ci = 0; mi = 1; }
+  /* 기록 출처: ① 구글 시트 웹 게시 CSV (휴대폰 데이터망 등)  ② 같은 사이트의 records.csv 사본
+     (기관망은 docs.google.com이 막혀 있어 ②로 받습니다. 사본은 GitHub가 10분마다 갱신) */
+  var srcs = [CFG.recordsCsvUrl, CFG.recordsMirror].filter(Boolean);
+  if (!srcs.length || !state.code) { return Promise.resolve(0); }
+  function get(u){
+    var url = u + (u.indexOf('?') >= 0 ? '&' : '?') + 't=' + Date.now();
+    return fetch(url, { cache:'no-store' }).then(function(r){ if (!r.ok) throw new Error(r.status); return r.text(); })
+      .then(function(t){ return /code/i.test(t.slice(0, 200)) ? t : null; }).catch(function(){ return null; });
+  }
+  return Promise.all(srcs.map(get)).then(function(texts){
+    var ok = texts.filter(Boolean);
+    if (!ok.length) { if (manual) toast('기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return 0; }
     var added = 0;
-    rows.forEach(function(r){
-      if (r[ci] !== state.code) return;
-      var n = parseInt(String(r[mi]).replace(/\D/g,''), 10);
-      if (n >= 1 && n <= 9 && !state.done[n]) { state.done[n] = 'restored'; added++; }
+    ok.forEach(function(txt){
+      var rows = txt.split(/\r?\n/).map(function(l){ return l.split(',').map(function(c){ return c.replace(/^"|"$/g,'').trim(); }); });
+      var head = (rows[0] || []).map(function(c){ return c.toLowerCase(); });
+      var ci = head.indexOf('code'), mi = head.indexOf('mission'); if (ci < 0 || mi < 0) { ci = 0; mi = 1; }
+      rows.forEach(function(r){
+        if (r[ci] !== state.code) return;
+        var n = parseInt(String(r[mi]).replace(/\D/g,''), 10);
+        if (n >= 1 && n <= 9 && !state.done[n]) { state.done[n] = 'restored'; added++; }
+      });
     });
     if (added) { save(); render(); toast('이전에 제출한 기록 ' + added + '개를 불러왔습니다.'); }
-    else if (manual) toast('새로 불러올 기록이 없습니다. 방금 제출한 기록은 몇 분 뒤에 반영됩니다.', 3400);
+    else if (manual) toast('새로 불러올 기록이 없습니다. 방금 제출한 기록은 10~20분 뒤에 반영됩니다.', 3600);
     return added;
-  }).catch(function(){ if (manual) toast('기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return 0; });
+  });
 }
 
 /* ───────── 미션 안내 ───────── */

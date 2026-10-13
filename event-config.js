@@ -18,7 +18,9 @@ window.EVENT_CONFIG = {
   tallyIdeaForm: '',    // 기능개선 의견 제안 서식
 
   /* 이어하기(기록 불러오기)용 구글 시트 "웹에 게시" CSV 주소. 비워 두면 이어하기가 꺼집니다. */
-  recordsCsvUrl: '',
+  recordsCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSs079KDn1BWyvgM4hxFMXk6q1r8D8lypT70oLcOdAkvXyMAkCy53ZnScyqq5xOo0UdS3aQW5-jS3nF/pub?gid=752852994&single=true&output=csv',
+  /* 기관망용 사본 (GitHub가 10분마다 위 CSV를 이 파일로 복사). 지우지 마세요. */
+  recordsMirror: 'records.csv',
 
   /* 문의처 */
   contact: '안전시설부 박주인 과장 (내선 7144)',
