@@ -532,7 +532,7 @@
 <canvas id="confetti"></canvas>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="event-config.js"></script>
+<script>document.write('<script src="event-config.js?t=' + Math.floor(Date.now()/60000) + '"><\/script>');</script>
 <script>
 (function(){
 'use strict';
@@ -542,7 +542,7 @@ var CFG = Object.assign({
   periodText: '2026. 10. 00.(0) ~ 00. 00.(0)',
   startDate: '', endDate: '',
   appUrl: './',
-  tallyBingoForm: '', tallyIdeaForm: '', recordsCsvUrl: '', recordsMirror: '',
+  tallyBingoForm: '', tallyIdeaForm: '', recordsCsvUrl: '', recordsMirror: 'records.csv',
   contact: '안전관리 담당자에게 문의해 주세요.',
   giftBingo: '추첨으로 3만원 상당 모바일 기프티콘 · 40명',
   giftIdea: '의견 반영자 중 10명 + 그 외 참여자 중 10명',
