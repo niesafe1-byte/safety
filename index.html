@@ -1906,7 +1906,7 @@ const SUBMIT_TOKEN = _K.submitToken || "";
 
 const GEMINI_MODEL = "gemini-3.6-flash";
 /* AI가 붐빌 때(503 등) 차례로 시도할 예비 모델. 없는 모델은 자동으로 건너뜁니다. */
-const GEMINI_FALLBACKS = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"];
+const GEMINI_FALLBACKS = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"];
 /* 무료 등급은 모델마다 하루 사용량이 따로라서, 한 모델이 소진(429)되면 다음 모델로 넘어갑니다. */
 const ADMIN = /[?&]admin\b/.test(location.search);
 function getAiKey(){ return GEMINI_KEY || localStorage.getItem('gemini_key') || ''; }
@@ -2512,7 +2512,7 @@ async function callGemini(key, prompt, b64) {
   const models = [GEMINI_MODEL].concat(GEMINI_FALLBACKS);
   let last = null, keyErr = null;
   for (let mi = 0; mi < models.length; mi++) {
-    for (let attempt = 0; attempt < (mi === 0 ? 3 : 2); attempt++) {
+    for (let attempt = 0; attempt < (mi === 0 ? 2 : 1); attempt++) {
       if (mi > 0 || attempt > 0) say('AI 이용자가 많아 다른 방법으로 다시 시도하는 중입니다…<br>(1~2분 걸릴 수 있어요. 화면을 닫지 말고 기다려 주세요)');
       const r = await tryModel(models[mi]);
       if (r.text) { say('AI가 사진을 분석하고 있습니다…<br>(약 10~20초)'); return r.text; }
