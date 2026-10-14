@@ -228,6 +228,8 @@
   .reward .big{flex:none;padding:8px 14px;border-radius:12px;background:var(--b2);color:#fff;font-size:15px;font-weight:900;white-space:nowrap}
   .reward p{margin:0;font-size:13px;line-height:1.45}
   .reward p b{color:var(--red)}
+  .sent{margin:10px 0 0;padding:10px 12px;border-radius:12px;background:#eaf7ee;color:#17603a;font-size:13px;font-weight:700;text-align:center;line-height:1.5}
+  .sent .no{display:inline-block;margin-top:4px;padding:3px 12px;border-radius:99px;background:#fff;color:#9c4e08;font-size:15px;font-weight:900;letter-spacing:.02em}
 
   /* 버튼 */
   .btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:50px;padding:12px 14px;border-radius:14px;border:0;
@@ -257,6 +259,8 @@
   .ex{margin:10px 0 0;padding:11px 13px 13px;border-radius:13px;background:#f1f5fb;text-align:center}
   .ex figcaption{font-size:12px;font-weight:700;color:var(--b2);text-align:left}
   .ex figcaption small{font-weight:500;color:var(--sub);margin-left:4px}
+  .ex.doc{background:#f6f8f4}
+  .ex.wide img{width:100%;max-width:none;border-radius:8px}
   .ex img{display:block;width:74%;max-width:290px;margin:9px auto 0;border-radius:14px;border:1px solid #cfd8e6;box-shadow:0 6px 16px rgba(30,60,110,.16)}
   .shot{margin:10px 0 0;padding:11px 13px;border-radius:13px;background:#fff7e0;font-size:13.5px;color:#5c4100}
   .shot b{display:block;font-size:12px;color:#8a6200;margin-bottom:2px}
@@ -266,6 +270,13 @@
   .eg pre{margin:0 0 10px;font-family:inherit;font-size:13px;white-space:pre-wrap;color:#2c3958;line-height:1.55}
   .eg p{margin:0 0 10px;font-size:13px}
   .eg a{color:var(--b);font-weight:700}
+  .sm-lead{margin:0 0 8px!important}
+  .sm-card{display:flex;gap:10px;align-items:stretch;margin:0 0 10px;padding:8px;border-radius:12px;background:#fff;border:1px solid #dfe7f1}
+  .sm-card img{flex:none;width:96px;height:96px;object-fit:cover;border-radius:9px}
+  .sm-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+  .sm-t b{font-size:14px;color:var(--ink)}
+  .sm-t span{font-size:12px;color:var(--sub);line-height:1.45}
+  .eg .sm-go{margin-top:auto;align-self:flex-start;padding:6px 12px;border-radius:99px;background:linear-gradient(135deg,#14897d,#0f6b5f);color:#fff;font-size:12.5px;font-weight:900;text-decoration:none}
   .acts{display:grid;gap:8px;margin-top:14px}
   .done-box{margin-top:12px;padding:12px;border-radius:13px;background:#eaf7ee;color:#17603a;font-size:14px;font-weight:700;text-align:center}
   .tip{margin:10px 2px 0;font-size:12px;color:#8291ab;text-align:center}
@@ -328,7 +339,7 @@
       <button class="entry idea" type="button" data-go="idea">
         <span class="row"><span class="no">이벤트 ②</span><span class="bulb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V17h5v-1.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg></span></span>
         <h3>기능개선<br>의견 제안</h3>
-        <p>불편한 점·오류·아이디어 · 20명 추첨</p>
+        <p id="entryIdeaStat">불편한 점·오류·아이디어 · 20명 추첨</p>
         <span class="cta">의견 남기기 ›</span>
       </button>
     </div>
@@ -445,7 +456,8 @@
       </div>
       <div class="reward"><span class="big">20명 추첨</span><p><b>3만원</b> 상당 모바일 기프티콘<br><span id="giftIdea"></span></p></div>
       <div class="acts"><button class="btn ora" id="btnIdea" type="button">의견 제안하기</button></div>
-      <p class="tip">여러 번 보내도 됩니다. 의견마다 따로 검토합니다.</p>
+      <p class="sent" id="ideaSent" style="display:none"></p>
+      <p class="tip">여러 번 보내도 됩니다. 의견마다 따로 검토하며, 의견 추첨권은 1인 1장입니다. 빙고 추첨권과는 따로 추첨합니다.</p>
     </div>
     <div class="notes">
       <ul>
@@ -490,7 +502,8 @@
     <p class="sub" id="msDesc"></p>
     <ol class="steps" id="msSteps"></ol>
     <div class="shot"><b>캡처할 화면</b><span id="msShot"></span></div>
-    <figure class="ex" id="msExBox" style="display:none"><figcaption>예시 화면<small>빨간 테두리 부분이 보이게 캡처하세요</small></figcaption><img id="msEx" alt="예시 캡처 화면"></figure>
+    <figure class="ex" id="msExBox" style="display:none"><figcaption><span id="msExCap">예시 화면</span><small>빨간 테두리 부분이 보이게 캡처하세요</small></figcaption><img id="msEx" alt="예시 캡처 화면"></figure>
+    <figure class="ex doc" id="msDocBox" style="display:none"><figcaption>메일에 첨부되는 서류<small>작성한 내용으로 자동으로 만들어져요</small></figcaption><img id="msDoc" alt="자동으로 만들어지는 서류 예시"></figure>
     <div class="eg" id="msEg"></div>
     <div class="done-box" id="msDone" hidden></div>
     <div class="acts">
@@ -564,12 +577,12 @@ var MISSIONS = [
   { n:2, cat:'w', tab:'weather', title:'시간대별<br>예보 캡처', plain:'시간대별 예보 캡처', desc:'언제 나갈까?',
     steps:['아래 <b>미션 하러 가기</b>를 눌러 날씨알림을 엽니다.','화면을 내려 <b>🕒 시간대별 현장예보</b>를 찾습니다. 옆으로 밀면 다음 시간이 보입니다.','활동하기 좋은 시간을 확인하고 그 화면을 <b>캡처</b>합니다.'],
     shot:'시간대별 현장예보가 보이는 화면' },
-  { n:3, cat:'t', tab:'trip', eg:'trip', title:'체크리스트 제출<br>외부메일 화면 캡처', plain:'체크리스트 제출 외부메일 화면 캡처', desc:'출장 전 안전점검',
-    steps:['아래 <b>미션 하러 가기</b>를 눌러 출장 자동화를 엽니다.','<b>STEP 1 안전점검 체크리스트</b>의 작성하러 가기를 누르고 끝까지 작성해 제출합니다.','제출이 끝나면 적어 둔 메일 주소로 <b>확인 메일</b>이 옵니다. 그 메일 화면을 <b>캡처</b>합니다.'],
-    shot:'체크리스트 제출 후 받은 외부메일 화면' },
-  { n:4, cat:'t', tab:'trip', eg:'trip', title:'안전점검일지 제출<br>외부메일 화면 캡처', plain:'안전점검일지 제출 외부메일 화면 캡처', desc:'출장 중 안전점검',
-    steps:['아래 <b>미션 하러 가기</b>를 눌러 출장 자동화를 엽니다.','<b>STEP 2 일일 안전확인 일지</b>의 작성하러 가기를 누르고 끝까지 작성해 제출합니다.','제출이 끝나면 적어 둔 메일 주소로 <b>확인 메일</b>이 옵니다. 그 메일 화면을 <b>캡처</b>합니다.'],
-    shot:'안전점검일지 제출 후 받은 외부메일 화면' },
+  { n:3, cat:'t', tab:'trip', eg:'trip', mail:true, title:'체크리스트 제출<br>외부메일 화면 캡처', plain:'체크리스트 제출 외부메일 화면 캡처', desc:'출장 전 안전점검',
+    steps:['아래 <b>미션 하러 가기</b>를 눌러 출장 자동화를 엽니다.','<b>STEP 1 안전점검 체크리스트</b>의 작성하러 가기를 누르고 끝까지 작성해 제출합니다.','작성한 메일 주소로 <b>「안전점검 체크리스트(부서_이름_날짜)」</b> 메일이 옵니다. 메일 제목과 첨부파일이 보이게 <b>캡처</b>합니다.'],
+    shot:'안전점검 체크리스트 메일의 제목과 첨부파일(PDF)이 보이는 화면' },
+  { n:4, cat:'t', tab:'trip', eg:'trip', mail:true, title:'안전점검일지 제출<br>외부메일 화면 캡처', plain:'안전점검일지 제출 외부메일 화면 캡처', desc:'출장 중 안전점검',
+    steps:['아래 <b>미션 하러 가기</b>를 눌러 출장 자동화를 엽니다.','<b>STEP 2 일일 안전확인 일지</b>의 작성하러 가기를 누르고 끝까지 작성해 제출합니다.','작성한 메일 주소로 <b>「일일 안전확인 일지(부서_이름_날짜)」</b> 메일이 옵니다. 메일 제목과 첨부파일이 보이게 <b>캡처</b>합니다.'],
+    shot:'일일 안전확인 일지 메일의 제목과 첨부파일(PDF)이 보이는 화면' },
   { n:5, cat:'r', tab:'risk', eg:'photo', title:'연구현장 위험성<br>평가 결과 캡처', plain:'연구현장 위험성평가 결과 캡처', desc:'연구현장 위험 찾아보기',
     steps:['아래 <b>미션 하러 가기</b>를 눌러 위험성평가를 엽니다.','평가 종류에서 <b>🔬 연구조사</b>를 고르고, 연구현장 사진을 올려 평가합니다.','AI가 찾은 위험요인이 보이는 결과 화면을 <b>캡처</b>합니다.'],
     shot:'연구조사 위험성평가 결과 화면' },
@@ -611,8 +624,8 @@ function makeCode(name, last4){ return 'N' + cyrb53(name.replace(/\s+/g,'').toLo
 function isDone(n){ return !!state.done[n]; }
 function doneCount(){ return MISSIONS.filter(function(m){ return isDone(m.n); }).length; }
 function doneLines(){ var r = []; LINES.forEach(function(l, i){ if (l.every(isDone)) r.push(i); }); return r; }
-function pno(){ return state.code ? state.code.slice(1, 7) : ''; }
-function ticketNos(){ var t = tickets(), p = pno(), a = []; for (var i = 1; i <= t; i++) a.push(p + '-' + i); return a; }
+function pno(){ return (state.code && state.pnumCode === state.code && state.pnum) ? String(state.pnum) : ''; }
+function ticketNos(){ var t = tickets(), p = pno(), a = []; if (!p) return a; for (var i = 1; i <= t; i++) a.push(p + '-' + i); return a; }
 function tickets(){ var d = doneCount(), b = doneLines().length; return d === 9 ? 5 : b >= 5 ? 3 : b >= 3 ? 2 : b >= 1 ? 1 : 0; }
 function korDate(s){ var p = s.split('-'); var d = new Date(+p[0], +p[1]-1, +p[2]); return (+p[1]) + '월 ' + (+p[2]) + '일(' + '일월화수목금토'.charAt(d.getDay()) + ')'; }
 function isOpen(){
@@ -706,7 +719,7 @@ function setNum(id, v){ var el = $(id); if (el.textContent !== String(v)) { el.t
 function render(animateLines){
   var me = $('meBar');
   if (state.code) {
-    me.innerHTML = '<span><b>' + esc(state.name) + '</b> 님 · ' + esc(state.dept) + '<br><small style="color:var(--b2);font-weight:700">참여번호 ' + pno() + '</small></span><span>' +
+    me.innerHTML = '<span><b>' + esc(state.name) + '</b> 님 · ' + esc(state.dept) + '<br><small style="color:var(--b2);font-weight:700">' + (pno() ? '참가번호 ' + pno() + '번' : '참가번호는 첫 제출 10~20분 뒤에 나와요') + '</small></span><span>' +
       ((CFG.recordsCsvUrl || CFG.recordsMirror) ? '<button class="link-btn" id="btnSync" type="button">기록 불러오기</button>' : '') +
       '<button class="link-btn" id="btnEdit" type="button">정보 수정</button></span>';
     $('btnEdit').onclick = function(){ openReg(); };
@@ -722,7 +735,7 @@ function render(animateLines){
     c.querySelector('.cbtn.go').textContent = dn ? '완료' : '제출';
   });
   document.querySelectorAll('#miniBoard i').forEach(function(i){ i.classList.toggle('on', isDone(+i.dataset.n)); });
-  $('entryBingoStat').textContent = state.code ? ('참여번호 ' + pno() + ' · 완료 ' + d + '/9 · 빙고 ' + lines.length + '줄 · 추첨권 ' + t + '장') : '9개 안전미션 빙고 · 40명 추첨';
+  $('entryBingoStat').textContent = state.code ? ((pno() ? '참가번호 ' + pno() + '번 · ' : '') + '완료 ' + d + '/9 · 빙고 ' + lines.length + '줄 · 추첨권 ' + t + '장') : '9개 안전미션 빙고 · 40명 추첨';
   document.querySelectorAll('#tiers li').forEach(function(li){ li.classList.toggle('now', +li.dataset.t === t); });
   var open = isOpen(), h;
   if (!open.ok) h = open.msg;
@@ -735,7 +748,8 @@ function render(animateLines){
     h = (need === 1 ? '한 칸만 더 채우면 빙고!' : need + '칸 더 채우면 빙고!') + next;
   }
   $('hint').textContent = h;
-  var tn = ticketNos(); var tnEl = $('ticketNos'); tnEl.style.display = tn.length ? '' : 'none'; tnEl.innerHTML = '<b>내 추첨권 번호</b> ' + tn.join(', ');
+  var tn = ticketNos(); var tnEl = $('ticketNos'); tnEl.style.display = t ? '' : 'none';
+  tnEl.innerHTML = tn.length ? '<b>빙고 추첨권 번호</b> ' + tn.join(', ') : '<b>빙고 추첨권 ' + t + '장</b> 번호는 첫 제출 10~20분 뒤에 나와요';
   drawLines(animateLines);
 }
 
@@ -762,7 +776,7 @@ $('btnRegSave').addEventListener('click', function(){
     state.done = {};
   }
   state.name = name; state.dept = dept; state.last4 = last4; state.code = code; state.agreedAt = state.agreedAt || new Date().toISOString();
-  save(); closeModal('mReg'); render();
+  save(); closeModal('mReg'); render(); renderIdea();
   var next = afterReg; afterReg = null;
   syncRecords(false).then(function(added){ if (next) next(); else if (!added) toast(name + ' 님, 등록되었습니다. 칸을 눌러 시작하세요!'); });
 });
@@ -781,7 +795,14 @@ function syncRecords(manual){
   return Promise.all(srcs.map(get)).then(function(texts){
     var ok = texts.filter(Boolean);
     if (!ok.length) { if (manual) toast('기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'); return 0; }
-    var added = 0;
+    var added = 0, before = state.pnum;
+    var longest = ok.reduce(function(a, b){ return b.length > a.length ? b : a; }, '');
+    var seen = {}, order = 0, rank = 0;
+    longest.split(/\r?\n/).slice(1).forEach(function(l){
+      var c = l.split(',')[0].replace(/^"|"$/g,'').trim(); if (!c || seen[c]) return;
+      seen[c] = ++order; if (c === state.code) rank = order;
+    });
+    if (rank) { state.pnum = rank; state.pnumCode = state.code; }
     ok.forEach(function(txt){
       var rows = txt.split(/\r?\n/).map(function(l){ return l.split(',').map(function(c){ return c.replace(/^"|"$/g,'').trim(); }); });
       var head = (rows[0] || []).map(function(c){ return c.toLowerCase(); });
@@ -792,7 +813,9 @@ function syncRecords(manual){
         if (n >= 1 && n <= 9 && !state.done[n]) { state.done[n] = 'restored'; added++; }
       });
     });
-    if (added) { save(); render(); toast('이전에 제출한 기록 ' + added + '개를 불러왔습니다.'); }
+    if (added || state.pnum !== before) { save(); render(); renderIdea(); }
+    if (added) toast('이전에 제출한 기록 ' + added + '개를 불러왔습니다.');
+    else if (state.pnum && state.pnum !== before) toast('참가번호 ' + state.pnum + '번이 생겼어요!');
     else if (manual) toast('새로 불러올 기록이 없습니다. 방금 제출한 기록은 10~20분 뒤에 반영됩니다.', 3600);
     return added;
   });
@@ -801,10 +824,21 @@ function syncRecords(manual){
 /* ───────── 미션 안내 ───────── */
 var cur = null;
 function appLink(tab){ var base = CFG.appUrl || './'; return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'tab=' + tab; }
+var SAMPLES = [];
+fetch('risk-samples.json?t=' + Math.floor(Date.now()/60000)).then(function(r){ return r.ok ? r.json() : []; }).then(function(a){ SAMPLES = Array.isArray(a) ? a : []; }).catch(function(){});
 function egHtml(m){
   var photos = (CFG.examplePhotos || []).map(function(p){ return '<a href="' + esc(p.url) + '" target="_blank" rel="noopener">' + esc(p.label) + '</a>'; }).join(' · ');
   if (m.eg === 'trip') return '<details><summary>출장이나 현장업무가 없다면? 예시 출장정보 보기</summary><pre>' + esc(CFG.exampleTrip) + '</pre><p>위 예시 정보로 서식을 작성해 제출하면 됩니다.</p></details>';
-  if (m.eg === 'photo') return '<details><summary>연구현장 사진이 없다면?</summary><p>' + (photos ? '예시 사진을 내려받아 사용하세요: ' + photos : '예전에 찍어둔 현장 사진이나, 주변 야외 공간을 찍은 사진으로 참여할 수 있습니다.') + '</p></details>';
+  if (m.eg === 'photo') {
+    if (!SAMPLES.length) return '<details><summary>연구현장 사진이 없다면?</summary><p>예전에 찍어둔 현장 사진이나, 주변 야외 공간을 찍은 사진으로 참여할 수 있습니다.</p></details>';
+    return '<details open><summary>현장업무가 없다면? 예시 상황으로 해 보기</summary>' +
+      '<p class="sm-lead">상황을 하나 고르고 <b>이 상황으로 평가하기</b>를 누르세요. 사진과 내용이 채워진 채로 위험성평가가 열립니다.</p>' +
+      SAMPLES.map(function(x){
+        return '<div class="sm-card"><img src="' + esc(x.photo) + '" alt="" loading="lazy">' +
+          '<div class="sm-t"><b>' + esc(x.title) + '</b><span>' + esc(x.situation) + '</span>' +
+          '<a class="sm-go" target="_blank" rel="noopener" href="' + appLink('risk') + '&sample=' + encodeURIComponent(x.id) + '">이 상황으로 평가하기 ›</a></div></div>';
+      }).join('') + '</details>';
+  }
   if (m.eg === 'office') return '<details><summary>어떤 사진을 올리나요?</summary><p>내 자리, 사무실, 창고, 실험실처럼 평소 일하는 공간을 찍으면 됩니다. 사람 얼굴이나 개인정보가 찍히지 않게 해 주세요.</p></details>';
   return '';
 }
@@ -819,6 +853,10 @@ function openMission(n){
   var exBox = $('msExBox'), ex = $('msEx'); exBox.style.display = 'none';
   ex.onload = function(){ exBox.style.display = ''; }; ex.onerror = function(){ exBox.style.display = 'none'; };
   ex.src = 'event-ex' + m.n + '.jpg';
+  exBox.classList.toggle('wide', !!m.mail);
+  $('msExCap').textContent = m.mail ? '제출하면 이런 메일이 와요' : '예시 화면';
+  var docBox = $('msDocBox'), doc = $('msDoc'); docBox.style.display = 'none';
+  if (m.mail) { doc.onload = function(){ docBox.style.display = ''; }; doc.onerror = function(){ docBox.style.display = 'none'; }; doc.src = 'event-ex' + m.n + '-doc.jpg'; }
   var eg = egHtml(m); $('msEg').innerHTML = eg; $('msEg').style.display = eg ? '' : 'none';
   $('msGo').href = appLink(m.tab);
   var done = isDone(m.n), open = isOpen();
@@ -832,7 +870,7 @@ function openMission(n){
 function submitMission(m){
   var open = isOpen(); if (!open.ok) { toast(open.msg); return; }
   if (!state.code) { openReg(function(){ submitMission(m); }); return; }
-  if (DEMO) openDemoSubmit(m); else openTally(CFG.tallyBingoForm, { mission:'M' + pad2(m.n), mission_title:m.plain }, function(){ complete(m.n); });
+  if (DEMO) openDemoSubmit(m); else openTally(CFG.tallyBingoForm, { mission:'M' + pad2(m.n), mission_title:m.plain }, function(){ complete(m.n); }, '제출하지 않고 닫았습니다. 캡처를 올리고 Submit을 눌러야 도장이 찍혀요.');
 }
 $('msSubmit').addEventListener('click', function(){
   var m = cur; if (!m) return;
@@ -849,7 +887,7 @@ function loadTally(){
   });
   return tallyLoading;
 }
-function openTally(formId, extra, onDone){
+function openTally(formId, extra, onDone, closedMsg){
   toast('제출 서식을 여는 중입니다…', 1500);
   loadTally().then(function(){
     var fired = false;
@@ -872,7 +910,7 @@ function openTally(formId, extra, onDone){
       onClose: function(){
         dlog('onClose fired=' + fired); window.removeEventListener('message', onMsg);
         /* 제출 신호를 못 받고 창이 닫힌 경우: 본인 확인 후 도장 (당첨자 캡처는 담당자가 따로 확인) */
-        if (!fired) setTimeout(function(){ if (!fired && confirm('제출을 완료하셨나요?\n완료했다면 [확인]을 눌러 도장을 받으세요.')) done(); }, 300);
+        if (!fired && closedMsg) setTimeout(function(){ if (!fired) toast(closedMsg, 3000); }, 400); /* 제출하지 않고 닫으면 기록하지 않음 */
       }
     });
   }).catch(function(){ alert('제출 서식을 불러오지 못했습니다.\n인터넷 연결을 확인하고 다시 시도해 주세요.'); });
@@ -919,9 +957,10 @@ function complete(n){
     var tNow = tickets(), all = doneCount() === 9;
     if (fresh.length || all) {
       setTimeout(function(){
-        celebrate(all ? 'ALL CLEAR!' : 'BINGO!', (all ? '9개 미션 전체 완료 · 추첨권 5장' : doneLines().length + '빙고 달성' + (tNow > tBefore ? ' · 추첨권 ' + tNow + '장' : '')) + (tNow > tBefore ? ' · 번호 ' + pno() + '-' + tNow : ''));
+        celebrate(all ? 'ALL CLEAR!' : 'BINGO!', (all ? '9개 미션 전체 완료 · 추첨권 5장' : doneLines().length + '빙고 달성' + (tNow > tBefore ? ' · 추첨권 ' + tNow + '장' : '')) + ((tNow > tBefore && pno()) ? ' · 번호 ' + pno() + '-' + tNow : ''));
       }, 750);
     } else toast('미션 ' + pad2(n) + ' 도장 완료!');
+    if (!pno()) { setTimeout(function(){ syncRecords(false); }, 12 * 60 * 1000); }
   }, 350);
 }
 var celeTimer;
@@ -946,15 +985,30 @@ function confetti(){
 }
 
 /* ───────── 기능개선 의견 ───────── */
+/* 의견 추첨권: 빙고와 따로, 의견을 1건 이상 보낸 사람에게 1장 (번호: 의견-참여번호) */
+function ideaCount(){ return (state.ideas && state.code && state.ideas[state.code]) || 0; }
+function ideaTicketNo(){ return pno() ? '의견 ' + pno() + '번' : ''; }
+function renderIdea(){
+  var c = ideaCount(), el = $('ideaSent'), card = $('entryIdeaStat');
+  if (c) { el.innerHTML = '의견 ' + c + '건 접수 · <b>의견 추첨권 1장</b>' + (ideaTicketNo() ? '<br><span class="no">' + ideaTicketNo() + '</span>' : '<br><small>번호는 참가번호가 생기면 함께 표시돼요</small>'); el.style.display = ''; }
+  else el.style.display = 'none';
+  if (card) card.textContent = c ? ('의견 ' + c + '건 · 추첨권 1장' + (ideaTicketNo() ? ' (' + ideaTicketNo() + ')' : '')) : '불편한 점·오류·아이디어 · 20명 추첨';
+}
+function ideaThanks(){
+  var first = !ideaCount();
+  state.ideas = state.ideas || {}; state.ideas[state.code] = ideaCount() + 1; save(); renderIdea();
+  if (first) celebrate('THANK YOU!', '의견 추첨권 1장' + (ideaTicketNo() ? ' · ' + ideaTicketNo() : ''));
+  else toast('의견이 접수되었습니다. 소중한 의견 고맙습니다!', 3200);
+}
 $('btnIdea').addEventListener('click', function(){
   var open = isOpen(); if (!open.ok) { toast(open.msg); return; }
   if (!state.code) { openReg(function(){ $('btnIdea').click(); }); return; }
   if (IDEA_DEMO) { $('idText').value = ''; $('idErr').classList.remove('on'); openModal('mIdea'); }
-  else openTally(CFG.tallyIdeaForm, {}, function(){ toast('의견이 제출되었습니다. 고맙습니다!'); });
+  else openTally(CFG.tallyIdeaForm, {}, function(){ ideaThanks(); }, '의견을 보내지 않고 닫았습니다.');
 });
 $('idSend').addEventListener('click', function(){
   if ($('idText').value.trim().length < 5) { $('idErr').textContent = '의견을 조금 더 자세히 적어 주세요.'; $('idErr').classList.add('on'); return; }
-  closeModal('mIdea'); toast('의견이 제출되었습니다. 고맙습니다!');
+  closeModal('mIdea'); ideaThanks();
 });
 
 /* ───────── 신호 확인 모드 (?debug=1): Tally 창과 주고받는 신호를 화면 위에 표시 ───────── */
@@ -977,7 +1031,7 @@ document.querySelectorAll('.contact2').forEach(function(el){ el.textContent = CF
 $('giftBingo').textContent = CFG.giftBingo;
 $('giftIdea').textContent = CFG.giftIdea;
 if (DEMO) $('demoBar').classList.add('on');
-buildBoard(); render(); showView(viewFromHash());
+buildBoard(); render(); renderIdea(); showView(viewFromHash());
 var rz; window.addEventListener('resize', function(){ clearTimeout(rz); rz = setTimeout(function(){ drawLines(); }, 120); });
 window.addEventListener('load', function(){ drawLines(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ drawLines(); });

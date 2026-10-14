@@ -699,6 +699,8 @@
    </div>
   </div>
 
+  <div id="rkSampleBanner" style="display:none;margin:0 0 12px;padding:12px 14px;border-radius:12px;background:#fffbea;border:1.5px solid #f6e05e;color:#744210;font-size:14px;line-height:1.55;"></div>
+
   <!-- ① 평가 종류 -->
   <div class="card" id="cardMode">
     <div class="label">📂 평가 종류 <span class="req">필수</span></div>
@@ -813,7 +815,7 @@
     <button class="btn btn-reset" id="btnReset">초기화</button>
   </div>
 
-  <div id="rkLoading"><div class="spin"></div>AI가 사진을 분석하고 있습니다…<br>(약 10~20초)</div>
+  <div id="rkLoading"><div class="spin"></div><span id="rkLoadingMsg">AI가 사진을 분석하고 있습니다…<br>(약 10~20초)</span></div>
 
   <!-- 결과: 화면 / PNG / 인쇄에 동일한 보고서 사용 -->
   <div id="resultArea">
@@ -1901,6 +1903,8 @@ const SUBMIT_WEBHOOK = _K.submitWebhook || "";   // Make 웹훅 주소 (keys.js)
 const SUBMIT_TOKEN = _K.submitToken || "";
 
 const GEMINI_MODEL = "gemini-3.6-flash";
+/* AI가 붐빌 때(503 등) 차례로 시도할 예비 모델. 없는 모델은 자동으로 건너뜁니다. */
+const GEMINI_FALLBACKS = ["gemini-3.5-flash", "gemini-2.5-flash"];
 const ADMIN = /[?&]admin\b/.test(location.search);
 function getAiKey(){ return GEMINI_KEY || localStorage.getItem('gemini_key') || ''; }
 
@@ -2197,6 +2201,9 @@ applyMode('research');
 document.getElementById('photoInput').addEventListener('change', function(e){
   const f = e.target.files[0];
   if (!f) return;
+  setPhotoFromBlob(f);
+});
+function setPhotoFromBlob(f){
   const reader = new FileReader();
   reader.onload = function(ev){
     const img = new Image();
@@ -2219,7 +2226,36 @@ document.getElementById('photoInput').addEventListener('change', function(e){
     img.src = ev.target.result;
   };
   reader.readAsDataURL(f);
-});
+}
+
+/* ── 예시 상황 (이벤트 참여사이트용): ?tab=risk&sample=번호 로 열면 사진과 입력값을 채움.
+   상황 목록은 같은 폴더의 risk-samples.json 에서 고칩니다. ── */
+async function loadSample(id){
+  const banner = document.getElementById('rkSampleBanner');
+  try {
+    const list = await fetch('risk-samples.json?t=' + Date.now(), { cache:'no-store' }).then(r => r.json());
+    const s = list.find(x => String(x.id) === String(id));
+    if (!s) return;
+    applyMode(s.mode || 'research');
+    const setSel = (sid, v) => {
+      if (!v) return; const el = document.getElementById(sid);
+      if (![...el.options].some(o => o.value === v)) el.insertAdjacentHTML('beforeend', '<option>' + v + '</option>');
+      el.value = v;
+    };
+    setSel('typeSelect', s.type); setSel('envSelect', s.env);
+    document.getElementById('targetName').value = s.target || '';
+    document.getElementById('workDesc').value = s.desc || '';
+    document.getElementById('location').value = s.location || '';
+    if (s.count) document.getElementById('surveyCount').value = s.count;
+    const blob = await fetch(s.photo).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); });
+    setPhotoFromBlob(blob);
+    banner.innerHTML = '📌 <b>예시 상황: ' + s.title + '</b><br>' + s.situation +
+      '<br><span style="color:#2f855a;font-weight:bold;">사진과 내용이 채워져 있어요. 맨 아래 [평 가]를 누르세요.</span>';
+    banner.style.display = 'block';
+  } catch (e) {
+    banner.textContent = '예시 상황을 불러오지 못했습니다. 사진을 직접 골라 주세요.'; banner.style.display = 'block';
+  }
+}
 
 /* ── 복수선택 칩 ── */
 document.querySelectorAll('#page-risk .chip').forEach(ch => {
@@ -2388,7 +2424,7 @@ ${m.extraRule ? '- ' + m.extraRule + '\n' : ''}- 반드시 아래 JSON 형식으
     await ensureFonts(JSON.stringify(data) + JSON.stringify(info));   // 보고서 글꼴 준비 후 그리기
     renderResult(data, info, evaluationPhoto);
   } catch (err) {
-    alert('평가 중 문제가 생겼습니다.\n' + err.message + '\n\n잠시 후 다시 시도해주세요.');
+    alert('평가하지 못했습니다.\n\n' + err.message);
   } finally {
     btn.disabled = false;
     document.getElementById('rkLoading').style.display = 'none';
@@ -2404,37 +2440,59 @@ async function callGemini(key, prompt, b64) {
     ]}],
     generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
   });
-  const urls = [
-    'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent',
-    'https://aiplatform.googleapis.com/v1/publishers/google/models/' + GEMINI_MODEL + ':generateContent'
-  ];
-  if (key.indexOf('AQ.') === 0) urls.reverse();   // 새 형식 키는 새 주소 먼저
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const msgEl = document.getElementById('rkLoadingMsg');
+  const say = t => { if (msgEl) msgEl.innerHTML = t; };
+  const busy = st => st === 429 || st === 500 || st === 502 || st === 503 || st === 504;
 
-  let last = null;
-  for (const u of urls) {
-    let res, j;
-    try {
-      res = await fetch(u + '?key=' + encodeURIComponent(key),
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      j = await res.json().catch(() => ({}));
-    } catch (e) { last = { status: 0, msg: '네트워크 연결을 확인해주세요.' }; continue; }
-
-    if (res.ok) {
-      const text = j.candidates && j.candidates[0] && j.candidates[0].content
-        && j.candidates[0].content.parts && j.candidates[0].content.parts[0]
-        && j.candidates[0].content.parts[0].text;
-      if (!text) throw new Error('AI가 결과를 주지 않았습니다. 다시 시도해주세요.');
-      return text;
+  /* 한 모델을 두 주소(기존/새 형식)로 시도 */
+  async function tryModel(model) {
+    const urls = [
+      'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent',
+      'https://aiplatform.googleapis.com/v1/publishers/google/models/' + model + ':generateContent'
+    ];
+    if (key.indexOf('AQ.') === 0) urls.reverse();   // 새 형식 키는 새 주소 먼저
+    let last = null;
+    for (const u of urls) {
+      let res, j;
+      try {
+        res = await fetch(u + '?key=' + encodeURIComponent(key),
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+        j = await res.json().catch(() => ({}));
+      } catch (e) { last = { status: 0, msg: '네트워크 연결을 확인해주세요.' }; continue; }
+      if (res.ok) {
+        const text = j.candidates && j.candidates[0] && j.candidates[0].content
+          && j.candidates[0].content.parts && j.candidates[0].content.parts[0]
+          && j.candidates[0].content.parts[0].text;
+        if (!text) return { status: 502, msg: 'AI가 결과를 주지 않았습니다.' };
+        return { text };
+      }
+      last = { status: res.status, msg: (j.error && j.error.message) || ('오류 ' + res.status) };
+      if (busy(res.status)) break;                  // 붐빔은 다른 주소로 가도 같음 → 재시도/예비 모델로
     }
-    last = { status: res.status, msg: (j.error && j.error.message) || ('오류 ' + res.status) };
-    if (res.status === 429) break;                 // 사용량 초과는 재시도 의미 없음
-    // 400/401/403/404는 다음 주소로 한 번 더 시도
+    return last || { status: 0, msg: 'AI 호출에 실패했습니다.' };
   }
 
-  if (last && last.status === 429)
-    throw new Error('무료 사용량을 잠시 초과했습니다. 1분 후 다시 시도해주세요.');
-  if (last && (last.status === 400 || last.status === 401 || last.status === 403))
-    throw new Error('AI 키가 올바르지 않은 것 같습니다. [🔑 키 변경]에서 다시 확인해주세요.\n(' + last.msg + ')');
+  const models = [GEMINI_MODEL].concat(GEMINI_FALLBACKS);
+  let last = null, keyErr = null;
+  for (let mi = 0; mi < models.length; mi++) {
+    for (let attempt = 0; attempt < (mi === 0 ? 3 : 2); attempt++) {
+      if (mi > 0 || attempt > 0) say('AI 이용자가 많아 다시 시도하는 중입니다…<br>(조금만 기다려 주세요)');
+      const r = await tryModel(models[mi]);
+      if (r.text) { say('AI가 사진을 분석하고 있습니다…<br>(약 10~20초)'); return r.text; }
+      last = r;
+      if (r.status === 400 || r.status === 401 || r.status === 403) { keyErr = r; break; }
+      if (r.status === 404) break;                  // 이 모델이 없음 → 다음 모델
+      if (!busy(r.status) && r.status !== 0) break;
+      await sleep(attempt === 0 ? 2500 : 6000);
+    }
+    if (keyErr && mi === 0) break;                  // 키 문제면 다른 모델도 같음
+  }
+  say('AI가 사진을 분석하고 있습니다…<br>(약 10~20초)');
+  if (keyErr)
+    throw new Error('AI 키가 올바르지 않은 것 같습니다. 관리자에게 알려주세요.\n(' + keyErr.msg + ')');
+  if (last && busy(last.status))
+    throw new Error('지금 AI 이용자가 많아 평가하지 못했습니다. 1~2분 뒤에 [평 가]를 다시 눌러 주세요.');
   throw new Error(last ? last.msg : 'AI 호출에 실패했습니다.');
 }
 
@@ -2959,7 +3017,7 @@ function demoResult(){
   };
   return new Promise(ok => setTimeout(() => ok(samples[currentMode] || samples.research), 1500));
 }
-return { toggleKeyCard, saveAiKey, clearAiKey, saveKmaKey, clearKmaKey, onOpen };
+return { toggleKeyCard, saveAiKey, clearAiKey, saveKmaKey, clearKmaKey, onOpen, loadSample };
 })();
 </script>
 <script>
@@ -3087,7 +3145,11 @@ function tabFromUrl(){
   if (!p && location.hash) { try { p = decodeURIComponent(location.hash.slice(1)); } catch(e) { p = location.hash.slice(1); } }
   return TAB_ALIAS[String(p).trim().toLowerCase()] || TAB_ALIAS[String(p).trim()] || null;
 }
-function applyUrlTab(){ const t = tabFromUrl(); if (t) goTab(t); }
+function applyUrlTab(){
+  const t = tabFromUrl(); if (t) goTab(t);
+  const sp = new URLSearchParams(location.search).get('sample');
+  if (t === 'risk' && sp && !applyUrlTab.done) { applyUrlTab.done = true; RK.loadSample(sp); }
+}
 window.addEventListener('hashchange', applyUrlTab);
 applyUrlTab();
 </script>
