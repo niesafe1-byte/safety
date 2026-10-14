@@ -15,7 +15,7 @@ window.EVENT_CONFIG = {
   /* Tally 서식 ID (서식 주소 https://tally.so/r/XXXXXX 의 XXXXXX 부분)
      비워 두면 "시험 모드"로 동작하며 제출 내용이 저장되지 않습니다. */
   tallyBingoForm: 'eq1PK0',   // 빙고 미션 인증 제출 서식
-  tallyIdeaForm: '',    // 기능개선 의견 제안 서식
+  tallyIdeaForm: '2EqW6g',    // 기능개선 의견 제안 서식
 
   /* 이어하기(기록 불러오기)용 구글 시트 "웹에 게시" CSV 주소. 비워 두면 이어하기가 꺼집니다. */
   recordsCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSs079KDn1BWyvgM4hxFMXk6q1r8D8lypT70oLcOdAkvXyMAkCy53ZnScyqq5xOo0UdS3aQW5-jS3nF/pub?gid=752852994&single=true&output=csv',
