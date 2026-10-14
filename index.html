@@ -155,6 +155,8 @@
   #page-risk textarea{ min-height:80px; resize:vertical; }
 
   
+  #page-risk .combo-direct{ color:#2b6cb0; font-weight:bold; border-top:1px dashed #cbd5e0; }
+  #page-risk .combo-manual{ border-color:#2b6cb0 !important; background:#f7fbff; }
   #page-risk .mode-chips{ display:flex; gap:10px; }
   #page-risk .mode-chip{
     flex:1; text-align:center; border:2px solid #e2e8f0; border-radius:12px;
@@ -728,7 +730,7 @@
       <label>참여인원 (명)<input type="number" id="surveyCount" min="1" max="9999" step="1" placeholder="예: 3"></label>
       <div class="field full">소속·팀
         <div class="combo">
-          <input type="text" id="surveyTeam" placeholder="팀 이름 일부를 입력하거나 ▼에서 고르세요 (예: 포 → 포유류복원팀)" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="teamList" aria-autocomplete="list">
+          <input type="text" id="surveyTeam" placeholder="팀 이름 일부를 입력하거나 ▼에서 고르세요 (예: 습지 → 습지연구팀)" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="teamList" aria-autocomplete="list">
           <button type="button" class="combo-toggle" id="teamToggle" tabindex="-1" aria-label="팀 목록 열기">▼</button>
           <div class="combo-list" id="teamList" role="listbox" hidden></div>
         </div>
@@ -1952,10 +1954,27 @@ const MODES = {
 };
 
 /* ── 소속·팀 목록 (여기서 추가·수정하면 자동완성에 바로 반영됩니다) ── */
+/* 국립생태원 누리집 조직도 기준 (2026-10). 목록에 없으면 직접 입력하면 됩니다 (협력업체 등). */
 const TEAMS = [
+  // 멸종위기종복원센터
   "복원기획팀", "복원정보팀", "서식지복원팀", "식물복원팀", "포유류복원팀", "조류복원팀",
   "어류ㆍ양서파충류복원팀", "곤충ㆍ무척추동물복원팀", "복원평가연구팀",
-  "복원교육부", "복원지원부", "안전시설부"
+  "복원교육부", "복원지원부", "안전시설부",
+  // 원장 직속
+  "감사실", "사업전략팀", "전시전략팀", "지능정보전략팀", "생태빅데이터팀", "사이버보안팀",
+  // 경영·안전본부
+  "기획예산부", "성과관리부", "홍보부", "인재경영부", "총무노무부", "재정운용부", "연구관리팀TF",
+  "안전경영부", "ESG경영부", "시설관리부",
+  // 생태기후연구본부
+  "생태지표연구팀", "탄소흡수연구팀", "생태변화연구팀", "기후변화적응팀",
+  "복원생태팀", "생태신기술팀", "생태계기후통합정보팀", "습지관리팀", "습지연구팀", "습지복원팀",
+  // 조사평가연구본부
+  "자연환경조사팀", "보호지역팀", "생태자연도팀", "환경영향평가팀", "생태계서비스팀", "외래생물팀", "LMO팀",
+  // 전시교육본부
+  "전시기획부", "전시운영부", "생태교육부", "지식문화부", "자생식물생태부", "세계식물생태부",
+  "동물복지부", "전시동물부", "동물보호부",
+  // 그 밖
+  "협력업체"
 ];
 
 /* ── 상태 ── */
@@ -1971,10 +1990,18 @@ function setupCombo(inputId, listId, toggleId, getItems){
   const input = document.getElementById(inputId);
   const list = document.getElementById(listId);
   const toggle = document.getElementById(toggleId);
-  let items = [], active = -1;
+  let items = [], active = -1, manual = false;
+  const basePh = input.placeholder;
 
   const norm = s => String(s).replace(/[\sㆍ·・]/g, '').toLowerCase();
+  /* "직접 입력"을 고르면 목록을 닫고 빈칸에 자유롭게 쓰게 함 (▼를 다시 누르면 목록으로) */
+  function goManual(){
+    manual = true; input.value = ''; close();
+    input.placeholder = '목록에 없는 이름을 직접 적어주세요';
+    input.classList.add('combo-manual'); input.focus();
+  }
   function open(filter){
+    if (manual) return;
     const all = getItems() || [];
     const q = norm(filter || '');
     items = q ? all.filter(t => norm(t).includes(q)) : all.slice();
@@ -1986,6 +2013,7 @@ function setupCombo(inputId, listId, toggleId, getItems){
           return '<div class="combo-item" role="option" data-i="'+i+'">'+html+'</div>';
         }).join('')
       : '<div class="combo-empty">일치하는 항목이 없습니다. 그대로 입력해도 됩니다.</div>';
+    list.innerHTML += '<div class="combo-item combo-direct" role="option" data-direct="1">✏️ 목록에 없어요 · 직접 입력하기</div>';
     list.hidden = false;
     input.setAttribute('aria-expanded', 'true');
   }
@@ -2012,10 +2040,12 @@ function setupCombo(inputId, listId, toggleId, getItems){
   list.addEventListener('mousedown', e => e.preventDefault());   // 클릭 시 blur로 목록이 먼저 닫히는 것 방지
   list.addEventListener('click', e => {
     const el = e.target.closest('.combo-item');
-    if (el) choose(Number(el.dataset.i));
+    if (!el) return;
+    if (el.dataset.direct) goManual(); else choose(Number(el.dataset.i));
   });
   toggle.addEventListener('mousedown', e => e.preventDefault());
   toggle.addEventListener('click', () => {
+    if (manual) { manual = false; input.placeholder = basePh; input.classList.remove('combo-manual'); }
     if (list.hidden) { open(''); input.focus(); } else close();
   });
 }
