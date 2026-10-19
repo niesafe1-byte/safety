@@ -887,7 +887,18 @@ function loadTally(){
   });
   return tallyLoading;
 }
+/* 카카오톡·네이버 등 앱 안 브라우저는 팝업의 제출 신호가 오지 않아, 서식 화면으로 이동했다가
+   제출 후 Tally의 "Redirect on completion"으로 event.html?stamp=M04&sc=코드 로 돌아오게 함 */
+function inAppBrowser(){ return /KAKAOTALK|NAVER\(inapp|DaumApps|Line\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent) || QS.has('inapp'); }
+function goTallyPage(formId, extra){
+  var p = Object.assign({ code:state.code, name:state.name, dept:state.dept, last4:state.last4 }, extra || {});
+  var q = Object.keys(p).map(function(k){ return encodeURIComponent(k) + '=' + encodeURIComponent(p[k] == null ? '' : p[k]); }).join('&');
+  try { sessionStorage.setItem('nieTallyPending', JSON.stringify({ formId:formId, extra:extra || {}, at:Date.now() })); } catch(e){}
+  toast('제출 화면으로 이동합니다…', 1500);
+  setTimeout(function(){ location.href = 'https://tally.so/r/' + formId + '?' + q; }, 300);
+}
 function openTally(formId, extra, onDone, closedMsg, recheck){
+  if (inAppBrowser()) { goTallyPage(formId, extra); return; }
   toast('제출 서식을 여는 중입니다…', 1500);
   loadTally().then(function(){
     var fired = false;
@@ -1035,6 +1046,25 @@ $('giftBingo').textContent = CFG.giftBingo;
 $('giftIdea').textContent = CFG.giftIdea;
 if (DEMO) $('demoBar').classList.add('on');
 buildBoard(); render(); renderIdea(); showView(viewFromHash());
+(function handleReturn(){
+  var st = QS.get('stamp'), idea = QS.get('idea'), sc = QS.get('sc');
+  if (!st && !idea) return;
+  var mine = !sc || !state.code || sc === state.code;
+  /* 주소의 표시는 지워서 새로고침해도 다시 처리되지 않게 */
+  try { var u = new URL(location.href); ['stamp','idea','sc'].forEach(function(k){ u.searchParams.delete(k); }); history.replaceState(null, '', u.pathname + (u.search ? u.search : '') + u.hash); } catch(e){}
+  try { sessionStorage.removeItem('nieTallyPending'); } catch(e){}
+  if (!mine) return;
+  if (st) {
+    var nn = parseInt(String(st).replace(/\D/g,''), 10);
+    if (nn >= 1 && nn <= 9) {
+      if (viewFromHash() !== 'bingo') go('bingo');
+      setTimeout(function(){ if (isDone(nn)) toast('제출되었습니다.'); else complete(nn); }, 700);
+    }
+  } else if (idea) {
+    if (viewFromHash() !== 'idea') go('idea');
+    setTimeout(ideaThanks, 500);
+  }
+})();
 var rz; window.addEventListener('resize', function(){ clearTimeout(rz); rz = setTimeout(function(){ drawLines(); }, 120); });
 window.addEventListener('load', function(){ drawLines(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ drawLines(); });
