@@ -870,7 +870,7 @@ function openMission(n){
 function submitMission(m){
   var open = isOpen(); if (!open.ok) { toast(open.msg); return; }
   if (!state.code) { openReg(function(){ submitMission(m); }); return; }
-  if (DEMO) openDemoSubmit(m); else openTally(CFG.tallyBingoForm, { mission:'M' + pad2(m.n), mission_title:m.plain }, function(){ complete(m.n); }, '제출하지 않고 닫았습니다. 캡처를 올리고 Submit을 눌러야 도장이 찍혀요.');
+  if (DEMO) openDemoSubmit(m); else openTally(CFG.tallyBingoForm, { mission:'M' + pad2(m.n), mission_title:m.plain }, function(){ complete(m.n); }, '제출 확인 신호를 받지 못했어요. Submit까지 누르셨다면 10~20분 뒤 자동으로 도장이 찍혀요.', true);
 }
 $('msSubmit').addEventListener('click', function(){
   var m = cur; if (!m) return;
@@ -887,7 +887,7 @@ function loadTally(){
   });
   return tallyLoading;
 }
-function openTally(formId, extra, onDone, closedMsg){
+function openTally(formId, extra, onDone, closedMsg, recheck){
   toast('제출 서식을 여는 중입니다…', 1500);
   loadTally().then(function(){
     var fired = false;
@@ -910,7 +910,10 @@ function openTally(formId, extra, onDone, closedMsg){
       onClose: function(){
         dlog('onClose fired=' + fired); window.removeEventListener('message', onMsg);
         /* 제출 신호를 못 받고 창이 닫힌 경우: 본인 확인 후 도장 (당첨자 캡처는 담당자가 따로 확인) */
-        if (!fired && closedMsg) setTimeout(function(){ if (!fired) toast(closedMsg, 3000); }, 400); /* 제출하지 않고 닫으면 기록하지 않음 */
+        if (!fired && closedMsg) setTimeout(function(){ if (!fired) toast(closedMsg, 4500); }, 400); /* 신호 없으면 도장은 찍지 않음 */
+        if (!fired && recheck) {   /* Tally에 실제로 저장됐다면 기록 사본에서 도장 복원 */
+          [1, 3, 6, 11, 18, 25].forEach(function(min){ setTimeout(function(){ syncRecords(false); }, min * 60 * 1000); });
+        }
       }
     });
   }).catch(function(){ alert('제출 서식을 불러오지 못했습니다.\n인터넷 연결을 확인하고 다시 시도해 주세요.'); });
@@ -1036,6 +1039,10 @@ var rz; window.addEventListener('resize', function(){ clearTimeout(rz); rz = set
 window.addEventListener('load', function(){ drawLines(); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ drawLines(); });
 if (state.code) syncRecords(false);
+var lastSyncAt = Date.now();
+document.addEventListener('visibilitychange', function(){
+  if (document.visibilityState === 'visible' && state.code && Date.now() - lastSyncAt > 3 * 60 * 1000) { lastSyncAt = Date.now(); syncRecords(false); }
+});
 
 /* 점검용 */
 window.__bingo = { state:function(){ return state; }, complete:complete, openMission:openMission, render:render, go:go,
